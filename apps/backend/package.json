@@ -10,8 +10,5 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "@ide/ts-utils": "^1.0.0"
-  }
+  "license": "ISC"
 }
