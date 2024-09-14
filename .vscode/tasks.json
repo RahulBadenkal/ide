@@ -1,0 +1,26 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "command": "npm run build:dev --workspace=apps/backend",
+            "label": "build-backend",
+            "detail": "Build backend task",
+            "isBackground": true
+        },
+        {
+            "type": "shell",
+            "command": "${input:closeTask}",
+            "label": "stop-build-backend",
+            "detail": "Stop build backend task"
+        },
+    ],
+
+    "inputs": [
+    {
+      "id": "closeTask",
+      "type": "command",
+      "command": "workbench.action.tasks.terminate",
+      "args": "build-backend"
+    }]
+  }

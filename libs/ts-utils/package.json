@@ -4,10 +4,7 @@
   "description": "",
   "type": "module",
   "main": "index.js",
-  "devDependencies": {},
-  "scripts": {
-    "build": "tsc --build"
-  },
+  "scripts": {},
   "keywords": [],
   "author": "",
   "license": "ISC"

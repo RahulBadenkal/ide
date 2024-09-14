@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "node esbuild.config.mjs",
-    "dev": "node esbuild.config.mjs --dev & node --watch dist/index.mjs"
+    "build:dev": "node esbuild.config.mjs --dev",
+    "dev": "npm run build:dev & node --watch dist/index.mjs"
   },
   "keywords": [],
   "author": "",
