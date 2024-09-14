@@ -10,17 +10,17 @@
         },
         {
             "type": "shell",
-            "command": "${input:closeTask}",
+            "command": "${input:stop-build-backend}",
             "label": "stop-build-backend",
             "detail": "Stop build backend task"
         },
     ],
-
     "inputs": [
-    {
-      "id": "closeTask",
-      "type": "command",
-      "command": "workbench.action.tasks.terminate",
-      "args": "build-backend"
-    }]
-  }
+        {
+            "id": "stop-build-backend",
+            "type": "command",
+            "command": "workbench.action.tasks.terminate",
+            "args": "build-backend"
+        }
+    ]
+}
