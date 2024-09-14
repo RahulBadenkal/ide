@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../libs/ts-utils/src/index.ts", "../src/main.ts"],
+  "sourcesContent": ["import fs from \"fs\"\nimport { dirname } from \"path\";\nimport { fileURLToPath } from \"url\";\n\n\nexport const isEven = (n: number): boolean => {\n  return n % 2 === 0\n}\n\nexport const getFileContents = () => {\n  const data = fs.readFileSync(\"./file.txt\").toString()\n  return data\n}", "import {isEven} from \"@ide/ts-utils/src\"\nimport { fileURLToPath } from 'url';\nimport { dirname } from 'path';\n\nconst __filename = fileURLToPath(import.meta.url);\nconst __dirname = dirname(__filename);\n\nconsole.log('__filename', __filename)\nconsole.log('__dirname', __dirname)\n\nconsole.log(isEven(2))\nconsole.log(\"Hello World Sucker\")\n// console.log(getFileContents())"],
+  "mappings": ";AAKO,IAAM,SAAS,CAAC,MAAuB;AAC5C,SAAO,IAAI,MAAM;AACnB;;;ACNA,SAAS,qBAAqB;AAC9B,SAAS,eAAe;AAExB,IAAM,aAAa,cAAc,YAAY,GAAG;AAChD,IAAM,YAAY,QAAQ,UAAU;AAEpC,QAAQ,IAAI,cAAc,UAAU;AACpC,QAAQ,IAAI,aAAa,SAAS;AAElC,QAAQ,IAAI,OAAO,CAAC,CAAC;AACrB,QAAQ,IAAI,oBAAoB;",
+  "names": []
+}
