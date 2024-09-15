@@ -1,5 +1,5 @@
 import { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types"
-import { moveArrayItem } from "../../shared/utils"
+import { moveArrayItem } from "@ide/ts-utils/src/lib/utils"
 import { WhiteboardProps } from "./Whiteboard"
 import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
 import { getSortedArray } from "./utils";
@@ -129,7 +129,7 @@ export const getDeltaOperationsForYjs = (oldElements: readonly ExcalidrawElement
 }
 
 
-export const applyOperations = (yArray: WhiteboardProps["yArray"], operations: Operation[], origin: string) => {
+export const applyOperations = (yArray: WhiteboardProps["yWhiteboard"], operations: Operation[], origin: string) => {
   // NOTE: yArray doesn't support a move operation (that is reordering elements within an array).
   // So to re-order the only way is to delete the element and insert it at the desired location
   // But that can lead to duplocation in some cases (when 1 person updates the same element and other reorders it)

@@ -7,7 +7,7 @@ import * as Y from 'yjs'
 import { fromUint8Array as fromUint8ArrayToBase64, toUint8Array as fromBase64ToUint8Array } from 'js-base64'
 import * as awarenessProtocol from 'y-protocols/awareness.js'
 import * as random from 'lib0/random'
-import { PISTON_SOCKET_BASE_URL, BACKEND_SOCKET_BASE_URL } from '../../app-shared/constants'
+import { PISTON_SOCKET_BASE_URL, BACKEND_SOCKET_BASE_URL } from '../../helpers/constants'
 import { ApiState } from '../../shared/types'
 
 // Define the base message interface

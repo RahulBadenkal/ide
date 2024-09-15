@@ -14,7 +14,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": resolve(__dirname, "./src")
+      "@frontend": resolve(__dirname, "./src")
     }
   },
   define: {

@@ -1,6 +1,6 @@
 import { For, JSX, mergeProps, Show } from "solid-js";
 
-import { Separator } from "@/components/ui/separator";
+import { Separator } from "@frontend/components/ui/separator";
 
 export type Tab = {
   id: string;

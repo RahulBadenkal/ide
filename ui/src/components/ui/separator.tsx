@@ -1,4 +1,4 @@
-import { cn } from "@/libs/cn";
+import { cn } from "@frontend/libs/cn";
 import type { PolymorphicProps } from "@kobalte/core/polymorphic";
 import type { SeparatorRootProps } from "@kobalte/core/separator";
 import { Separator as SeparatorPrimitive } from "@kobalte/core/separator";
