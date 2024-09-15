@@ -10,7 +10,7 @@ const __dirname = dirname(__filename);
 export default defineConfig({
   plugins: [solid(), solidSvg({defaultAsComponent: true,})],
   server: {
-    port: 3000
+    port: 4200
   },
   resolve: {
     alias: {
