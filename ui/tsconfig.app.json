@@ -22,8 +22,7 @@
     "noFallthroughCasesInSwitch": true,
     "baseUrl": "./",
     "paths": {
-      "@frontend/*": ["./src/*"],
+      "@/*": ["./src/*"],
     }
-  },
-  "include": ["src"]
+  }
 }

@@ -1,10 +1,10 @@
-import { Button } from "@frontend/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
-} from "@frontend/components/ui/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import type {
   DropdownMenuSubTriggerProps,
 } from "@kobalte/core/dropdown-menu";
@@ -23,10 +23,10 @@ import CircleEllipsesIcon from 'lucide-solid/icons/circle-ellipsis';
 import KeyboardIcon from 'lucide-solid/icons/keyboard';
 import PencilOffIcon from 'lucide-solid/icons/pencil-off'
 import CircleUserRound from 'lucide-solid/icons/circle-user-round'
-import RunIcon from '@frontend/assets/run/run.svg'
-import DebugIcon from '@frontend/assets/debug/debug.svg'
-import ReRunIcon from '@frontend/assets/rerun/rerun.svg'
-import StopIcon from '@frontend/assets/stop/stop.svg'
+import RunIcon from '@/assets/run/run.svg'
+import DebugIcon from '@/assets/debug/debug.svg'
+import ReRunIcon from '@/assets/rerun/rerun.svg'
+import StopIcon from '@/assets/stop/stop.svg'
 
 import {
   Combobox,
@@ -34,12 +34,12 @@ import {
   ComboboxTrigger,
   ComboboxContent,
   ComboboxInput
-} from "@frontend/components/ui/combobox";
+} from "@/components/ui/combobox";
 import { createFilter } from "@kobalte/core";
 import { For } from "solid-js"
 import { Show } from "solid-js"
-import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from "@frontend/components/ui/switch";
-import { TextField, TextFieldLabel, TextFieldRoot } from "@frontend/components/ui/textfield";
+import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from "@/components/ui/switch";
+import { TextField, TextFieldLabel, TextFieldRoot } from "@/components/ui/textfield";
 import {
   Dialog,
   DialogContent,
@@ -47,22 +47,22 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger
-} from "@frontend/components/ui/dialog";
+} from "@/components/ui/dialog";
 import { Switch as SolidSwitch, Match } from "solid-js"
-import { Separator } from "@frontend/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import PresentationIcon from 'lucide-solid/icons/presentation';
 import CirclePlayIcon from 'lucide-solid/icons/circle-play';
 import * as Y from 'yjs'
 
 
 import './Workspace.styles.scss'
-import { Tabs, TabsList, TabsTrigger } from "@frontend/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tab, TabProps } from "./Tab";
-import { CodeEditor } from "@frontend/components/CodeEditor/CodeEditor";
+import { CodeEditor } from "@/components/CodeEditor/CodeEditor";
 import Split from 'split-grid'
-import { SplitGrid } from "@frontend/components/SplitGrid/SplitGrid";
-import { Whiteboard } from "@frontend/components/Whiteboard/Whiteboard";
+import { SplitGrid } from "@/components/SplitGrid/SplitGrid";
+import { Whiteboard } from "@/components/Whiteboard/Whiteboard";
 
 // types
 type Language = { id: string, display: string, icon: string }

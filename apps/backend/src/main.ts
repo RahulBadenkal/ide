@@ -1,14 +1,37 @@
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import { isNullOrUndefined } from '@ide/ts-utils/src/lib/utils';
+import express from 'express';
+import expressWs from 'express-ws';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
-console.log('__filename', __filename)
-console.log('__dirname', __dirname)
-console.log("PORT", process.env.PORT)
+// Import routes
+import {router as workspaceRouter} from "@/views/workspace/routes"
+import { errorToHttpErrorPayload } from "@ide/ts-utils/src/lib/http";
+import { PUBLIC_DIR_PATH } from './constants';
 
-console.log(isNullOrUndefined(1))
-console.log("Hello World Suck")
-// console.log(getFileContents())
+// Create Express application
+const app = express();
+const { app: wsApp } = expressWs(app);
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve static files
+app.use(express.static(PUBLIC_DIR_PATH));
+
+// Register routes
+app.use('/api/workspace', workspaceRouter);
+
+// WebSocket route
+
+
+// Error handling middleware
+app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const payload = errorToHttpErrorPayload(error)
+  return res.status(payload.status).jsonp(payload)
+});
+
+// Start server
+const PORT = process.env.PORT;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});

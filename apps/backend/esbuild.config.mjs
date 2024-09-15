@@ -19,8 +19,8 @@ await build({
       resolveFrom: process.cwd(),
       assets: [
         {
-          from: ['./src/assets/*'],
-          to: ["./dist/assets"],
+          from: ['./src/public/*'],
+          to: ["./dist/public"],
         }
       ],
     }),
