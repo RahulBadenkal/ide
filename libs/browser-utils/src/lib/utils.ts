@@ -14,7 +14,7 @@ export const setCookie = (name: string, value: string, expiresInMs?: number) => 
     date.setTime(date.getTime() + expiresInMs);
     expires = "; expires=" + date.toUTCString();
   }
-  document.cookie = name + "=" + (value || "") + expires + "; path=/"
+  document.cookie = name + "=" + (value || "") + expires + "; path=/;"
 }
 
 export const getCurrentSiteAbsoluteUrl = (relativeUrl: string) => {

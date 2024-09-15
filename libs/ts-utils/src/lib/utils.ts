@@ -75,3 +75,21 @@ export const moveArrayItem = <T>(arr: T[], from: number, to: number, inPlace = t
   arr.splice(to, 0, arr.splice(from, 1)[0]);
   return arr
 };
+
+
+export const formUrl = ({basePath, otherPath, params}: {basePath: string, otherPath?: string, params: {[key: string]: any}}) => {
+  params = !params ? {} : params
+  const formattedParams: {[key: string]: string} = {}
+  for (let key of Object.keys(params)) {
+    const value = params[key]
+    if (isNullOrUndefined(value)) {
+      continue
+    }
+    formattedParams[key] = typeof value === "string" ? value: JSON.stringify(value)
+  }
+  
+  const base = otherPath ? new URL(otherPath, basePath).toString() : basePath
+  const queryParams = new URLSearchParams(Object.entries(formattedParams)).toString();
+
+  return queryParams ? `${base}?${queryParams}` : base
+}

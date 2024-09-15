@@ -38,14 +38,15 @@
             "request": "launch",
         
             // Debug current file in VSCode
-            "program": "${workspaceFolder}/apps/backend/src/main.ts",
+            "cwd": "${workspaceFolder}/apps/backend",
+            "program": "./src/main.ts",
         
             /*
              * Path to tsx binary
              * Assuming locally installed
              */
             "runtimeExecutable": "tsx",
-            "runtimeArgs": ["watch", "--inspect", "--env-file=apps/backend/.env"],
+            "runtimeArgs": ["watch", "--inspect", "--env-file=.env"],
         
             /*
              * Open terminal when debugging starts (Optional)

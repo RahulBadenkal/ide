@@ -29,7 +29,7 @@ export const makeGetCall = async <R=any, E=any>(
     url: string,
     config?: AxiosRequestConfig
 ): Promise<
-    | { response: AxiosResponse<R>; error?: never }
+    { response: AxiosResponse<R>; error?: never }
     | { response?: never; error: HttpErrorPayload<E> }
 > => {
     try {
@@ -46,7 +46,7 @@ export const makePostCall = async <D=any, R=any, E=any>(
     data?: D,
     config?: AxiosRequestConfig
 ): Promise<
-    | { response: AxiosResponse<R>; error?: never }
+    { response: AxiosResponse<R>; error?: never }
     | { response?: never; error: HttpErrorPayload<E> }
 > => {
     try {
