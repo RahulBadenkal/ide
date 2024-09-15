@@ -3,24 +3,9 @@
     "tasks": [
         {
             "type": "shell",
-            "command": "npm run build:dev --workspace=apps/backend",
-            "label": "build-backend",
-            "detail": "Build backend task",
-            "isBackground": true
+            "command": "cd apps/backend && rm -rf dist",
+            "label": "delete-backend-dist",
+            "detail": "Delete backend dist"
         },
-        {
-            "type": "shell",
-            "command": "${input:stop-build-backend}",
-            "label": "stop-build-backend",
-            "detail": "Stop build backend task"
-        },
-    ],
-    "inputs": [
-        {
-            "id": "stop-build-backend",
-            "type": "command",
-            "command": "workbench.action.tasks.terminate",
-            "args": "build-backend"
-        }
     ]
 }
