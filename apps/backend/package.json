@@ -6,8 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node esbuild.config.mjs",
-    "build:dev": "node esbuild.config.mjs --dev",
-    "dev": "npm run build:dev & node --watch dist/index.mjs"
+    "dev": "tsx watch --env-file=.env ./src/main.ts"
   },
   "keywords": [],
   "author": "",

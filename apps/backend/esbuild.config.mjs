@@ -1,16 +1,16 @@
-import { build, context } from 'esbuild';
+import { build } from 'esbuild';
 import { resolve } from 'path';
 import { copy } from 'esbuild-plugin-copy';
 
-const isDev = !!process.argv.includes('--dev')
 
-const buildOptions = {
+await build({
   entryPoints: [resolve(process.cwd(), 'src', 'main.ts')],
   outfile: resolve(process.cwd(), 'dist', 'index.mjs'),
   bundle: true,
   platform: 'node',
   format: 'esm',
-  sourcemap: isDev,
+  minify: false,
+  sourcemap: true,
   external: ["node_modules/*"],
   plugins: [
     copy({
@@ -18,28 +18,11 @@ const buildOptions = {
       // if not specified, this plugin uses ESBuild.build outdir/outfile options as base path.
       resolveFrom: process.cwd(),
       assets: [
-        ...(isDev? [{
-          from: ["./.env"],
-          to: ["./dist/.env"]
-        }] : []),
         {
           from: ['./src/assets/*'],
           to: ["./dist/assets"],
         }
       ],
-      watch: isDev,
     }),
   ],
-};
-
-if (isDev) {
-  context(buildOptions).then(ctx => {
-    if (isDev) {
-      ctx.watch();
-    } else {
-      ctx.rebuild();
-    }
-  });
-} else {
-  build(buildOptions)
-}
+})

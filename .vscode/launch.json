@@ -2,19 +2,68 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "current file",
             "type": "node",
             "request": "launch",
+        
+            // Debug current file in VSCode
+            "program": "${file}",
+        
+            /*
+             * Path to tsx binary
+             * Assuming locally installed
+             */
+            "runtimeExecutable": "tsx",
+            "runtimeArgs": ["watch", "--inspect"],
+        
+            /*
+             * Open terminal when debugging starts (Optional)
+             * Useful to see console.logs
+             */
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen",
+        
+            // Files to exclude from debugger (e.g. call stack)
+            "skipFiles": [
+                // Node.js internal core modules
+                "<node_internals>/**",
+        
+                // Ignore all dependencies (optional)
+                "${workspaceFolder}/node_modules/**"
+            ]
+        },
+        {
             "name": "backend",
-            "cwd": "${workspaceFolder}/apps/backend/dist",
-            "runtimeExecutable": "node",
-            "runtimeArgs": [
-                "--watch",
-                "--env-file=.env",
-                "index.mjs"
+            "type": "node",
+            "request": "launch",
+        
+            // Debug current file in VSCode
+            "program": "${workspaceFolder}/apps/backend/src/main.ts",
+        
+            /*
+             * Path to tsx binary
+             * Assuming locally installed
+             */
+            "runtimeExecutable": "tsx",
+            "runtimeArgs": ["watch", "--inspect", "--env-file=apps/backend/.env"],
+        
+            /*
+             * Open terminal when debugging starts (Optional)
+             * Useful to see console.logs
+             */
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen",
+        
+            // Files to exclude from debugger (e.g. call stack)
+            "skipFiles": [
+                // Node.js internal core modules
+                "<node_internals>/**",
+        
+                // Ignore all dependencies (optional)
+                "${workspaceFolder}/node_modules/**"
             ],
-            "preLaunchTask": "build-backend",
-            "postDebugTask": "stop-build-backend"
+
+            "preLaunchTask": "delete-backend-dist"
         }
-        // repeat for each debuggable app
     ]
 }
