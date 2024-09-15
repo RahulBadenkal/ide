@@ -1,0 +1,16 @@
+{
+  "name": "@ide/frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "devDependencies": {},
+  "scripts": {
+    "prebuild": "sh prebuild.sh",
+    "dev": "npm run prebuild && vite",
+    "build": "npm run prebuild && tsc -b && vite build",
+    "preview": "npm run build && vite preview"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": ""
+}

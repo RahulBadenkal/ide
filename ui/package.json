@@ -1,21 +1,14 @@
 {
-  "name": "ide",
-  "version": "1.0.0",
-  "description": "",
+  "name": "ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "prebuild": "sh prebuild.sh",
+    "dev": "npm run prebuild && vite",
+    "build": "npm run prebuild && tsc -b && vite build",
+    "preview": "npm run build && vite preview"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "workspaces": [
-    "apps/backend",
-    "libs/ts-utils",
-    "libs/shared",
-    "apps/frontend",
-    "libs/browser-utils",
-    "libs/node-utils"
-  ],
   "dependencies": {
     "@codemirror/commands": "^6.6.0",
     "@codemirror/state": "^6.4.1",
@@ -42,17 +35,14 @@
     "yjs": "^13.6.18"
   },
   "devDependencies": {
-    "@types/node": "^22.5.5",
+    "@types/node": "^22.5.0",
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
-    "esbuild": "^0.23.1",
-    "esbuild-plugin-copy": "^2.1.1",
     "postcss": "^8.4.41",
     "sass": "^1.77.8",
     "tailwindcss": "^3.4.10",
-    "nodemon": "^3.1.4",
-    "typescript": "^5.6.2",
+    "typescript": "^5.5.3",
     "vite": "^5.4.1",
     "vite-plugin-solid": "^2.10.2",
     "vite-plugin-solid-svg": "^0.8.1"
