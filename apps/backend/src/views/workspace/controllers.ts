@@ -4,6 +4,7 @@ import { SocketError } from "@ide/ts-utils/src/lib/http";
 import { NextFunction, Request, Response } from 'express';
 import { sql } from 'slonik';
 import * as ws from "ws";
+import * as Y from 'yjs'
 
 enum Role {
   OWNER = 3,
@@ -30,6 +31,46 @@ const updateLastOpenedOn = async (userId: string, documentId: string) => {
   `
   await pool.query(query, [userId, documentId])
 }
+
+const fetchUserDocuments = async (userId: string) => {
+  const pool = await DB.getPool()
+  const query = sql.unsafe`
+    SELECT * FROM document_usage
+    LEFT JOIN document
+    ON document_usage.document_id = document.id
+    WHERE user_id = ${userId} AND (document.owner = ${userId} OR document.is_sharing)
+    ORDER BY last_opened_on DESC
+  `
+  const documents = (await pool.query(query, [userId])).rows
+  for (let document of documents) {
+    document.role = getUserRole(userId, document)
+  }
+  return documents
+}
+
+// This is persisted doc
+const newDoc = () => {
+  return {
+    // room related variables
+    isSharing: false,
+    roomId: "",
+
+    // code editor variables
+    activeLanguage: '',
+    languageCodeMap: {},
+    
+    // whiteboard variables
+    whiteboard: '',
+  }
+}
+
+const newSessionDoc = () => {
+  return {
+    
+  }
+}
+
+const yDocs = {}
 
 export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentId?: string, roomId?: string}>) => {
   console.log('New Client connected');
@@ -58,7 +99,9 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
     }
     document.role = role
     await updateLastOpenedOn(user.id, document.id)
-    ws.send(JSON.stringify({type: 'init', data: {user, document}}))
+    const documents = await fetchUserDocuments(user.id)
+    yDocs[documentId] = yDocs[documentId] || new Y.Doc()
+    ws.send(JSON.stringify({type: 'init', data: {user, document, documents}}))
   }
   else {
     let query = sql.unsafe`
@@ -79,7 +122,8 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
     }
     document.role = getUserRole(user.id, document)
     await updateLastOpenedOn(user.id, document.id)
-    ws.send(JSON.stringify({type: 'init', data: {user, document}}))
+    const documents = await fetchUserDocuments(user.id)
+    ws.send(JSON.stringify({type: 'init', data: {user, document, documents}}))
   }
   
   // ws.on('message', (msg) => {

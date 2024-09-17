@@ -87,6 +87,8 @@ https://ide.rahulbadenkal.com/
   - https://github.com/microsoft/monaco-editor-webpack-plugin/issues/136
   - https://github.com/microsoft/monaco-editor-webpack-plugin/issues/135
 
+- Somebody implemeted yjs in excalidraw -> https://github.com/satoren/y-phoenix-channel, mainly this file: https://github.com/satoren/y-phoenix-channel/blob/bf7c01966e15e5214f8a93f0a6200e6db787ccde/assets/js/excalidraw.tsx
+
 # Additional references
 - Tells that in monacl syntax highlighting and lsp features (for json/html/css/js/ts) are tightly coupled -  https://github.com/microsoft/monaco-editor/issues/3126
 - Discussion on architecure of hosting lsp servers - https://github.com/TypeFox/monaco-languageclient/discussions/400
