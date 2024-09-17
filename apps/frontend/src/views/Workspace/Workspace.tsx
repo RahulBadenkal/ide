@@ -21,8 +21,8 @@ export const Workspace = () => {
     switch (type) {
       case "init": {
         setPageLoadApiInfo({state: ApiState.LOADED})
-        setDocument(data.document)
         setUser(data.user)
+        setDocument(data.document)
         break
       }
       case "error": {
