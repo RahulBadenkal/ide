@@ -1,6 +1,6 @@
 {
-  "id": "0644a3a8-a953-4588-91f0-f9f7280df289",
-  "prevId": "c811f493-4d6b-48a6-ba02-bf3c9ee25faa",
+  "id": "f2342ff6-12a8-4971-b1bd-8b742c9919ae",
+  "prevId": "e1d9757f-d098-41d8-81ab-8c74e68e1649",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -138,6 +138,12 @@
         "room_id": {
           "name": "room_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "write": {
+          "name": "write",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         },

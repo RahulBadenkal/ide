@@ -1,6 +1,6 @@
 {
-  "id": "0644a3a8-a953-4588-91f0-f9f7280df289",
-  "prevId": "c811f493-4d6b-48a6-ba02-bf3c9ee25faa",
+  "id": "92fef4d1-ee54-4240-a7f3-802a886c2bb1",
+  "prevId": "da456f52-3974-4e37-8aa8-bd8cdce1e6d6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -64,6 +64,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "last_opened_on": {
+          "name": "last_opened_on",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "NOW()"
+        },
         "created_on": {
           "name": "created_on",
           "type": "timestamp with time zone",
@@ -109,7 +116,16 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {
+        "unique_user_id_document_id": {
+          "name": "unique_user_id_document_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "document_id"
+          ]
+        }
+      }
     },
     "public.document": {
       "name": "document",
@@ -121,6 +137,12 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
         },
         "owner": {
           "name": "owner",
@@ -138,6 +160,12 @@
         "room_id": {
           "name": "room_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "room_write_access": {
+          "name": "room_write_access",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         },

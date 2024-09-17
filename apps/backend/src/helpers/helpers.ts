@@ -1,4 +1,4 @@
-import { errorToHttpErrorPayload } from '@ide/ts-utils/src/lib/http';
+import { errorToHttpErrorPayload, errorToWsErrorPayload } from '@ide/ts-utils/src/lib/http';
 import { NextFunction, Request, Response } from 'express';
 import {WebSocket} from "ws";
 
@@ -23,10 +23,12 @@ export const wsErrorWrapper = (controllerFn: (ws: WebSocket, req: Request, next:
       await controllerFn(ws, req, next);
     } catch (error) {
       console.error("WS Uncaught error!!!")
-      const payload = errorToHttpErrorPayload(error)
+      const payload = errorToWsErrorPayload(error, !!error.closeSocket)
       console.error(payload.stackTrace || payload.message)
-      ws.send(JSON.stringify(payload))
-      return ws.close(payload.wsStatus, payload.status === 500 ? 'Server error': 'App terminated the connection due to some issue' )
+      ws.send(JSON.stringify({type: 'error', data: payload}))
+      if (payload.closeSocket) {
+        return ws.close(payload.wsStatus, payload.status === 500 ? 'Server error': 'App terminated the connection due to some issue' )
+      } 
     }
   };
 };

@@ -11,7 +11,6 @@ import { Workspace } from './views/Workspace/Workspace';
 import { NotFound } from './views/NotFound';
 
 // Make sure userId header is populated
-console.log(getCookie('x-user-id'))
 if (!getCookie('x-user-id')) {
   setCookie('x-user-id', crypto.randomUUID())
 }

@@ -58,3 +58,4 @@ Final decision
 - Use codemirror. If something doesn't exists build from scratch
 
 
+- Should I use websockets for all purposes since its already created? or should i use a mixture of http + sockets

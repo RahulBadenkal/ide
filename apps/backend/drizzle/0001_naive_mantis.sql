@@ -1,0 +1,1 @@
+ALTER TABLE "document_access" DROP COLUMN IF EXISTS "room_id";

@@ -1,6 +1,6 @@
 {
-  "id": "0644a3a8-a953-4588-91f0-f9f7280df289",
-  "prevId": "c811f493-4d6b-48a6-ba02-bf3c9ee25faa",
+  "id": "fba8db9a-c158-4b32-98e4-0a7b00100df8",
+  "prevId": "0458beed-ef60-4fc3-9560-db5a4eb95361",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -63,6 +63,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "last_opened_on": {
+          "name": "last_opened_on",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "NOW()"
         },
         "created_on": {
           "name": "created_on",
@@ -138,6 +145,12 @@
         "room_id": {
           "name": "room_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "room_write_access": {
+          "name": "room_write_access",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         },

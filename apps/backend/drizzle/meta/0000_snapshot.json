@@ -1,6 +1,6 @@
 {
-  "id": "0644a3a8-a953-4588-91f0-f9f7280df289",
-  "prevId": "c811f493-4d6b-48a6-ba02-bf3c9ee25faa",
+  "id": "adc79246-1b97-4cb0-b38c-39209651a077",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -41,8 +41,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "public.document_usage": {
-      "name": "document_usage",
+    "public.document_access": {
+      "name": "document_access",
       "schema": "",
       "columns": {
         "id": {
@@ -64,6 +64,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "room_id": {
+          "name": "room_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "created_on": {
           "name": "created_on",
           "type": "timestamp with time zone",
@@ -81,9 +87,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "document_usage_user_id_app_user_id_fk": {
-          "name": "document_usage_user_id_app_user_id_fk",
-          "tableFrom": "document_usage",
+        "document_access_user_id_app_user_id_fk": {
+          "name": "document_access_user_id_app_user_id_fk",
+          "tableFrom": "document_access",
           "tableTo": "app_user",
           "columnsFrom": [
             "user_id"
@@ -94,9 +100,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "document_usage_document_id_document_id_fk": {
-          "name": "document_usage_document_id_document_id_fk",
-          "tableFrom": "document_usage",
+        "document_access_document_id_document_id_fk": {
+          "name": "document_access_document_id_document_id_fk",
+          "tableFrom": "document_access",
           "tableTo": "document",
           "columnsFrom": [
             "document_id"
