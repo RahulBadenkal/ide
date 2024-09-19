@@ -36,7 +36,8 @@ export const CodeEditor = (props: CodeEditorProps) => {
       highlightActiveLineGutter(),
       keymap.of(keyCommands),
       // yCollab(props.yText, props.awareness, {undoManager}),
-      yCollab(props.yCode, null, {undoManager})
+      // yCollab(props.yCode, null, {undoManager})
+      yCollab(props.yCode, null, {undoManager: false})
     ];
 
     let startState = EditorState.create({

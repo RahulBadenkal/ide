@@ -1,14 +1,14 @@
-import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
 import { useNavigate, useParams } from "@solidjs/router";
 import { formUrl, isNullOrUndefined } from "@ide/ts-utils/src/lib/utils";
 import { getCookie } from "@ide/browser-utils/src/lib/utils";
-import './Workspace.styles.scss'
 import { Awareness, Collaborator, Doc, Language, Role } from "@ide/shared/src/lib/types"
 import * as Y from "yjs"
 import { fromBase64ToUint8Array, fromUint8ArrayToBase64 } from "@ide/shared/src/lib/helpers"
 import { makeGetCall } from "@ide/ts-utils/src/lib/axios-utils"
+import './Workspace.styles.scss'
 
 // import icon
 import CheckIcon from 'lucide-solid/icons/check';
@@ -25,6 +25,8 @@ import ReRunIcon from '@/assets/rerun/rerun.svg'
 import StopIcon from '@/assets/stop/stop.svg'
 import Loader2Icon from 'lucide-solid/icons/loader-2';
 import RefreshCcwIcon from 'lucide-solid/icons/refresh-ccw'
+import CodeXmlIcon from 'lucide-solid/icons/code-xml';
+import CirclePlayIcon from 'lucide-solid/icons/circle-play';
 
 // import components
 import PageLoader from "@/components/PageLoader/PageLoader";
@@ -49,6 +51,11 @@ import {
   ComboboxContent,
   ComboboxInput
 } from "@/components/ui/combobox";
+import { Tab } from "./Tab";
+import { CodeEditor } from "@/components/CodeEditor/CodeEditor";
+import { Whiteboard } from "@/components/Whiteboard/Whiteboard";
+import Split from 'split.js'
+
 
 // types
 type LanguageMetada = { id: Language, display: string, icon: string }
@@ -263,7 +270,6 @@ export const Workspace = () => {
                     {totalCollaborators()}
                   </div>
                 </Show>
-
               </div>
             </Button>
           )}
@@ -271,7 +277,7 @@ export const Workspace = () => {
         <DropdownMenuContent class="p-3 grid gap-y-3 w-[400px]">
           <div class="font-medium">Multiplayers</div>
           <div class="grid gap-y-3">
-            <Show when={isOwner()}>
+            <Show when={role() === Role.OWNER}>
               <div class="flex justify-between">
                 <div class="flex items-center gap-x-3">
                   <div><GlobeIcon size={24} /></div>
@@ -334,7 +340,7 @@ export const Workspace = () => {
                   <div>{isRoomLinkCopied() ? 'Copied!' : 'Copy Link'}</div>
                 </div>
               </div>
-              <Show when={isOwner()}>
+              <Show when={role() == Role.OWNER}>
                 <div class="flex items-center gap-x-1">
                   <div class="text-xs">Want to revoke access to this link?</div>
                   <a class={"text-xs font-medium " + (!isNewRoomLinkGenerated() ? 'cursor-pointer' : '')} onClick={() => !isNewRoomLinkGenerated() && generateNewRoomLink()}>{isNewRoomLinkGenerated() ? 'New link generated!' : 'Generate a new link'}</a>
@@ -444,7 +450,7 @@ export const Workspace = () => {
           <img src='https://leetcode.com/_next/static/images/logo-ff2b712834cf26bf50a5de58ee27bcef.png' class='h-full mr-2'></img>
           <Separator orientation="vertical" />
         </div>
-        <div class="w-full max-w-[250px]">
+        <div class="w-full max-w-[250px] ml-2">
           <TextFieldRoot class="w-full">
             <TextField type="text" placeholder="Type your doc name..." class="bg-background" value={doc().name} onInput={(e) => onDocNameUpdate(e.currentTarget.value)} />
           </TextFieldRoot>
@@ -476,7 +482,49 @@ export const Workspace = () => {
       </div>
     </div>
   }
+  
+  onMount(() => {
+    setTimeout(() => {
+      Split(['#split-0', '#split-1'], {
+        direction:"horizontal",
+        minSize: 0,
+        snapOffset: 0,
+    })
 
+      Split(['#split-00', '#split-01'], {
+        direction: 'vertical',
+        minSize: 0,
+        snapOffset: 0,
+      })
+    }, 1000)
+   
+
+  })
+
+  const bodyJsx = () => {
+   return <div class='grow px-[10px] pb-[10px] overflow-auto flex flex-col gap-2'>
+      <div class="split h-full">
+        <div id="split-0">
+          <div id="split-00"></div>
+          <div id="split-01"></div>
+        </div>
+        <div id="split-1"></div>
+      </div>
+    </div>
+    
+      {/* <div class="flex h-[60%] gap-2">
+        <Tab tabs={[{id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code'}]} activeTabId="code" content={CodeEditor({yCode: (yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)})} />
+        <Tab tabs={[{id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard'}]} activeTabId="whiteboard" content={Whiteboard({yWhiteboard: new Y.Array()})} />
+      </div>
+      <div class="h-[40%]">
+        <Tab tabs={[{id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console'}]} activeTabId="console" content={
+          <div class="h-full">
+            Console
+          </div>
+        } />
+      </div>       */}
+    // </div>
+  }
 
   // variables
   let yDoc: Y.Doc = new Y.Doc();
@@ -502,18 +550,9 @@ export const Workspace = () => {
   const [isRoomLinkCopied, setIsRoomLinkCopied] = createSignal(false)
   const [isNewRoomLinkGenerated, setIsNewLinkGenerated] = createSignal(false)
 
-  const [collaborators, setCollaborators] = createSignal<any>();
-  const [document, setDocument] = createSignal<any>()
-  const [roomId, setRoomId] = createSignal<any>();
-  const [readOnly, setReadOnly] = createSignal<any>();
-  const [syncRunSession, setSyncRunSession] = createSignal<any>();
-
   // computed variables
   const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
-  const isOwner = createMemo(() => pageLoaded() ? doc().owner === user().id : false)
   const filteredDocuments = createMemo(() => documents()
-    .map((document) => document.id === doc().id ? { ...document, ...doc() } : document)
-    .map((document) => ({...document, owner_name: awareness().collaborators[document.owner]?.name || document.owner_name})) 
     .filter((document) => !showMyDocuments() ? true : document.owner === user().id)
     .filter((document) => !workspacesSearchText() ? true : document.name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()) || document.owner_name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()))
    
@@ -522,10 +561,6 @@ export const Workspace = () => {
   const totalCollaborators = createMemo(() => pageLoaded() ? Object.keys(awareness().collaborators).length : 0)
   const roomLink = createMemo(() => pageLoaded() ? `${window.location.origin}/rooms/${doc().roomId}` : "")
 
-  setInterval(() => {
-    console.log('showMyDocuments', showMyDocuments())
-    console.log('workspacesSearchText', workspacesSearchText())
-  }, 5000)
   // events
   // socket events
   socket.onopen = (event) => {
@@ -604,6 +639,10 @@ export const Workspace = () => {
   const onLanguageChange = (language: Language) => {
     yDoc.transact(() => {
       yDoc.getMap().set("activeLanguage", language)
+      const languageCodeMap = yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>
+      if (!languageCodeMap.has(language)) {
+        languageCodeMap.set(language, new Y.Text(""))
+      }
     }, { type: 'updateLanguage' })
   }
 
@@ -661,6 +700,7 @@ export const Workspace = () => {
       <Match when={pageLoadApiInfo().state === ApiState.LOADED}>
         <div class='h-full flex flex-col app-bg'>
           {toolbarJsx()}
+          {bodyJsx()}
         </div>
       </Match>
     </Switch>

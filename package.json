@@ -40,7 +40,7 @@
     "slonik": "^46.1.0",
     "solid-icons": "^1.1.0",
     "solid-js": "^1.8.20",
-    "split-grid": "^1.0.11",
+    "split.js": "^1.6.5",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
     "y-codemirror.next": "^0.3.5",

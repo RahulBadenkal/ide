@@ -33,6 +33,7 @@ const newDoc = (document: any) => {
 
   rootMap.set('activeLanguage', Language.PYTHON_3_12);
   const languageCodeMap = new Y.Map();
+  languageCodeMap.set(Language.PYTHON_3_12, new Y.Text(""))
   rootMap.set('languageCodeMap', languageCodeMap);
 
   const whiteboard = new Y.Array();
