@@ -55,6 +55,7 @@ import { Tab } from "./Tab";
 import { CodeEditor } from "@/components/CodeEditor/CodeEditor";
 import { Whiteboard } from "@/components/Whiteboard/Whiteboard";
 import Split from 'split.js'
+import { HorizontalSplitPane, VerticalSplitPane } from "@/components/SplitPane/SplitPane";
 
 
 // types
@@ -484,32 +485,54 @@ export const Workspace = () => {
   }
   
   onMount(() => {
-    setTimeout(() => {
-      Split(['#split-0', '#split-1'], {
-        direction:"horizontal",
-        minSize: 0,
-        snapOffset: 0,
-    })
+    // setTimeout(() => {
+    //   Split(['#split-0', '#split-1'], {
+    //     direction:"horizontal",
+    //     minSize: 0,
+    //     snapOffset: 0,
+    // })
 
-      Split(['#split-00', '#split-01'], {
-        direction: 'vertical',
-        minSize: 0,
-        snapOffset: 0,
-      })
-    }, 1000)
+    //   Split(['#split-00', '#split-01'], {
+    //     direction: 'vertical',
+    //     minSize: 0,
+    //     snapOffset: 0,
+    //   })
+    // }, 1000)
    
 
   })
 
+  const [x, setX] = createSignal([1, 2]) 
+  const [a, setA] = createSignal("text-red-600")
+  setInterval(() => {
+    const length = Math.max(2, Math.floor(Math.random() * 5))
+    console.log(length)
+    const arr = []
+    for (let i=0; i<length; i++) {
+      arr.push(i)
+    }
+    setX(arr)
+
+    if (a() === 'text-red-600') {
+      setA('text-green-600')
+    }
+    else {
+      setA('text-red-600')
+    }
+  }, 10000)
   const bodyJsx = () => {
    return <div class='grow px-[10px] pb-[10px] overflow-auto flex flex-col gap-2'>
-      <div class="split h-full">
-        <div id="split-0">
-          <div id="split-00"></div>
-          <div id="split-01"></div>
-        </div>
-        <div id="split-1"></div>
-      </div>
+      <HorizontalSplitPane minSize={36}>
+        <VerticalSplitPane minSize={36}>
+          <Tab tabs={[{id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code'}]} activeTabId="code" content={CodeEditor({yCode: (yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)})} />
+          <Tab tabs={[{id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console'}]} activeTabId="console" content={
+            <div class="h-full">
+              Console
+            </div>
+          } />
+        </VerticalSplitPane>
+        <Tab tabs={[{id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard'}]} activeTabId="whiteboard" content={Whiteboard({yWhiteboard: new Y.Array()})} />
+      </HorizontalSplitPane>
     </div>
     
       {/* <div class="flex h-[60%] gap-2">

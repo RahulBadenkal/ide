@@ -1,106 +1,52 @@
-import { createEffect, onCleanup, onMount, Component, JSX } from 'solid-js';
-import Split from 'split.js';
+import { Component, children, JSX, createEffect, createMemo, onMount } from "solid-js";
+import "./SplitPane.scss"
+import Split from "split.js";
 
-type SplitWrapperProps = {
-  sizes?: number[];
-  minSize?: number | number[];
-  maxSize?: number | number[];
-  expandToMin?: boolean;
-  gutterSize?: number;
-  gutterAlign?: string;
-  snapOffset?: number | number[];
-  dragInterval?: number;
-  direction?: string;
-  cursor?: string;
-  gutter?: (index: number, direction: string) => HTMLElement;
-  elementStyle?: (dimension: number, size: number, gutterSize: number) => object;
-  gutterStyle?: (dimension: number, gutterSize: number) => object;
-  onDrag?: (sizes: number[]) => void;
-  onDragStart?: (sizes: number[]) => void;
-  onDragEnd?: (sizes: number[]) => void;
-  collapsed?: number;
-  children: JSX.Element[];
-};
+export type SplitPaneProps = {
+  children: JSX.Element;
+  class?: string;
+  direction: Split.Options["direction"]
+  minSize?: Split.Options["maxSize"];
+  snapOffset?: Split.Options["snapOffset"]
+  dragInterval?: Split.Options["dragInterval"]
+}
 
-export const SplitPane: Component<SplitWrapperProps> = (props) => {
-  let parentRef: HTMLDivElement | undefined;
-  let split: Split.Instance;
+export const SplitPane = (props: SplitPaneProps) => {
+  const content = children(() => props.children);
+  let split: Split.Instance
 
-  const initializeSplit = () => {
-    if (!parentRef) return;
+  const recreate = () => {
+    if (split) {
+      split.destroy()
+    }
+    split = Split(content() as any, {
+      direction: props.direction,
+      minSize: props.minSize || 0,
+      snapOffset: props.snapOffset || 0,
+      dragInterval: props.dragInterval || 1,
+    })
+  }
 
-    const options: any = {
-      ...props,
-      gutter: (index, direction) => {
-        let gutterElement: HTMLElement;
-
-        if (props.gutter) {
-          gutterElement = props.gutter(index, direction);
-        } else {
-          gutterElement = document.createElement('div');
-          gutterElement.className = `gutter gutter-${direction}`;
-        }
-
-        (gutterElement as any).__isSplitGutter = true;
-        return gutterElement;
-      },
-    };
-
-    split = Split(Array.from(parentRef.children) as any, options);
-  };
-
-  onMount(() => {
-    initializeSplit();
-  });
 
   createEffect(() => {
-    if (!split) return;
+    content()  // So that recreate triggers whenever content changes
 
-    const {
-      sizes,
-      minSize,
-      maxSize,
-      expandToMin,
-      gutterSize,
-      gutterAlign,
-      snapOffset,
-      dragInterval,
-      direction,
-      cursor,
-    } = props;
+    recreate()
+  })
 
-    const needsRecreate = [
-      maxSize,
-      expandToMin,
-      gutterSize,
-      gutterAlign,
-      snapOffset,
-      dragInterval,
-      direction,
-      cursor,
-    ].some((prop) => prop !== undefined);
+  return <div class={"split-container w-full h-full " + ('split-' + props.direction + " ")}>
+    {content()}
+  </div>
+}
 
-    if (needsRecreate || (Array.isArray(minSize) && minSize.some((size, i) => size !== split.getSizes()[i]))) {
-      split.destroy(true, true);
-      initializeSplit();
-    } else if (sizes) {
-      split.setSizes(sizes);
-    }
+export type HorizontalSplitProps = Omit<SplitPaneProps, "direction">
 
-    if (typeof props.collapsed === 'number') {
-      split.collapse(props.collapsed);
-    }
-  });
+export const HorizontalSplitPane = (props: HorizontalSplitProps) => {
+  return <SplitPane direction="horizontal" {...props} />
+}
 
-  onCleanup(() => {
-    if (split) {
-      split.destroy();
-    }
-  });
+export type VerticalSplitProps = Omit<SplitPaneProps, "direction">
 
-  return (
-    <div ref={parentRef}>
-      {props.children}
-    </div>
-  );
-};
+export const VerticalSplitPane = (props: VerticalSplitProps) => {
+  return <SplitPane direction="vertical" {...props} />
+}
