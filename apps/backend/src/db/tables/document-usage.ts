@@ -8,6 +8,7 @@ export const documentAccess = pgTable('document_usage', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => appUser.id, {onDelete: 'cascade'}),
   documentId: uuid('document_id').notNull().references(() => document.id, {onDelete: 'cascade'}),
+  lastKnownRoomId: uuid('last_known_room_id'),
   lastOpenedOn: timestamp('last_opened_on', {withTimezone: true}).notNull().default(sql`NOW()`),
   createdOn: timestamp('created_on', {withTimezone: true}).notNull().default(sql`NOW()`),
   updatedOn: timestamp('updated_on', {withTimezone: true}).notNull().default(sql`NOW()`)  

@@ -100,7 +100,9 @@ export const Workspace = () => {
         break
       }
       case "error": {
+        setPageLoadApiInfo({state: ApiState.ERROR, error: data})
         console.error(data)
+        break
       }
     }
   }
@@ -443,6 +445,7 @@ export const Workspace = () => {
   const navigate = useNavigate();
   const socket = new WebSocket(formUrl({basePath: BACKEND_SOCKET_BASE_URL, otherPath: "api/workspace/room", params: {documentId: params.documentId, roomId: params.roomId, 'x-user-id': getCookie('x-user-id')}}))
   const [pageLoadApiInfo, setPageLoadApiInfo] = createSignal<ApiLoadInfo>({state: ApiState.LOADING})
+  const [socketStatus, setSocketStatus] = createSignal<"open" | "close">("close")
   const [user, setUser] = createSignal<any>()
   const [role, setRole] = createSignal<Role>()
   
@@ -474,6 +477,7 @@ export const Workspace = () => {
   // socket events
   socket.onopen = (event) => {
     console.log('Connected to WebSocket server', event);
+    setSocketStatus("open")
   };
 
   socket.onmessage = (event) => {
@@ -483,6 +487,7 @@ export const Workspace = () => {
 
   socket.onclose = (event) => {
     console.log('Disconnected from WebSocket server', event);
+    setSocketStatus("close")
   }
 
   socket.onerror = (event) => {
@@ -577,8 +582,7 @@ export const Workspace = () => {
         <PageLoader />
       </Match>
       <Match when={pageLoadApiInfo().state === ApiState.ERROR}>
-        <div>Show page error</div>
-        <div>{pageLoadApiInfo().error?.message}</div>
+        <div class="text-red-600">{pageLoadApiInfo().error?.message}</div>
       </Match>
       <Match when={pageLoadApiInfo().state === ApiState.LOADED}>
         <div class='h-full flex flex-col app-bg'>

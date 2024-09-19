@@ -61,6 +61,7 @@ export const errorToHttpErrorPayload = (error: any): HttpErrorPayload => {
 
 export const errorToWsErrorPayload = (error: any, closeSocket: boolean): SocketErrorPayload => {
   // In javascript you can throw anything and not just Error class object
+  console.log(closeSocket)
   if (error instanceof SocketError) {
     return {...error.payload, closeSocket: closeSocket}
   }

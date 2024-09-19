@@ -23,7 +23,7 @@ export const wsErrorWrapper = (controllerFn: (ws: WebSocket, req: Request, next:
       await controllerFn(ws, req, next);
     } catch (error) {
       console.error("WS Uncaught error!!!")
-      const payload = errorToWsErrorPayload(error, !!error.closeSocket)
+      const payload = errorToWsErrorPayload(error, !!error.payload?.closeSocket)
       console.error(payload.stackTrace || payload.message)
       ws.send(JSON.stringify({type: 'error', data: payload}))
       if (payload.closeSocket) {

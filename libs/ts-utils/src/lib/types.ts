@@ -1,4 +1,4 @@
-import { HttpErrorPayload } from "./http";
+import { HttpErrorPayload, SocketErrorPayload } from "./http";
 
 export const enum ApiState {
   NOT_LOADED = "NOT_LOADED",
@@ -9,5 +9,5 @@ export const enum ApiState {
 
 export type ApiLoadInfo = {
   state: ApiState,
-  error?: HttpErrorPayload
+  error?: HttpErrorPayload | SocketErrorPayload
 }

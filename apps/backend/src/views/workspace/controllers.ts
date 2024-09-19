@@ -1,6 +1,6 @@
 import { appUser } from "@/db";
 import { DB } from "@/db/db";
-import { SocketError } from "@ide/ts-utils/src/lib/http";
+import { errorToWsErrorPayload, SocketError } from "@ide/ts-utils/src/lib/http";
 import { NextFunction, Request, Response } from 'express';
 import { sql } from 'slonik';
 import * as ws from "ws";
@@ -139,13 +139,15 @@ const getDocumentByDocIdOrRoomId = async (documentId?: string, roomId?: string) 
   return document
 }
 
-const getUserLastOpenedDoc = async (userId: string) => {
+const getUserLastOpenedDocWithAccess = async (userId: string) => {
   const pool = await DB.getPool();
   const query = sql.unsafe`
     SELECT document.* FROM document
     LEFT JOIN document_usage
     ON document.id = document_usage.document_id
-    WHERE document_usage.user_id = ${userId}
+    WHERE
+      document_usage.user_id = ${userId} AND
+      (document.owner = ${userId} OR (document.sharing AND document.room_id = document_usage.last_known_room_id))  -- access check
     ORDER BY document_usage.last_opened_on DESC
     LIMIT 1;
   `;
@@ -155,13 +157,25 @@ const getUserLastOpenedDoc = async (userId: string) => {
 
 const addNewDocToDb = async (owner: string) => {
   const pool = await DB.getPool();
-  const query = sql.unsafe`
+  pool.transaction(async (_) => {
+    let query = sql.unsafe`
       INSERT INTO document (owner)
       VALUES (${owner})
       RETURNING *
-  `;
-  const document = await pool.one(query)
-  return document
+    `;
+    const document = await pool.one(query)
+
+    query = sql.unsafe`
+      INSERT INTO document_usage (user_id, document_id, last_opened_on)
+      VALUES (${owner}, ${document.id}, NOW())
+      ON CONFLICT (user_id, document_id)
+      DO UPDATE SET 
+        last_opened_on = EXCLUDED.last_opened_on
+    `
+    await pool.query(query)
+
+    return document
+  })
 }
 
 const updateLastOpenedOn = async (userId: string, documentId: string) => {
@@ -258,7 +272,7 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
     await updateLastOpenedOn(user.id, documentId)
   }
   else {
-    let document = await getUserLastOpenedDoc(user.id)
+    let document = await getUserLastOpenedDocWithAccess(user.id)
     if (!document) {
       document = await addNewDocToDb(user.id)
     }
@@ -329,6 +343,20 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
       case "toggleSharing":
       case "changeRoomLink": {
         updateShareInfo(documentId)
+        const docJson = docToJson(doc)
+        if (!docJson.sharing || type === "changeRoomLink") {
+          // Sharing stopped, Kick every one out who is not the owner
+          const collaborators = awarenessToJson(awareness).collaborators
+          const owner = docToJson(doc).owner
+          const error = new SocketError({status: 403, code: "forbidden", message: 'You have been kicked out', closeSocket: true})
+          const message = {type: "error", data: error.payload}
+          for (let collaboratorId of Object.keys(collaborators)) {
+            if (collaboratorId !== owner) {
+              userIdSocketMap[collaboratorId]?.send(JSON.stringify(message))  
+              userIdSocketMap[collaboratorId]?.close(error.payload.wsStatus, error.payload.message)  
+            }
+          }  
+        }
         break
       }
       case "updateUserName": {
