@@ -1,7 +1,7 @@
 import express from 'express';
-import { room } from "./controllers"
-import { wsErrorWrapper } from '@/helpers/helpers';
-import { wsAttachUserInfo } from '@/helpers/middlewares';
+import { room, getDocuments } from "./controllers"
+import { httpErrorWrapper, wsErrorWrapper } from '@/helpers/helpers';
+import { httpAttachUserInfo, wsAttachUserInfo } from '@/helpers/middlewares';
 
 const router = express.Router();
 
@@ -11,6 +11,11 @@ export const mountRouter = () => {
   router.ws('/room',
     wsErrorWrapper(wsAttachUserInfo),
     wsErrorWrapper(room)
+  );
+
+  router.get('/documents',
+    httpErrorWrapper(httpAttachUserInfo),
+    httpErrorWrapper(getDocuments)
   );
 }
 

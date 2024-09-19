@@ -1,20 +1,18 @@
 import express from 'express';
 import expressWs from 'express-ws';
-import { DB } from "@/db/db";
-import { sql } from 'slonik';
+import cors from 'cors';
 
 // Import routes
 import workspaceRouter, {mountRouter as workspaceMountRouter} from "@/views/workspace/routes"
 import { errorToHttpErrorPayload } from "@ide/ts-utils/src/lib/http";
 import { PUBLIC_DIR_PATH } from './constants';
-import { appUser } from './db';
-import { getTableName } from "drizzle-orm";
 import { httpErrorWrapper } from './helpers/helpers';
 
 // Create Express application
 const { app } = expressWs(express());
 
 // Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

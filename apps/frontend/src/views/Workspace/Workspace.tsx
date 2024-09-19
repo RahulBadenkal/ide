@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
-import { BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
+import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
 import { useNavigate, useParams } from "@solidjs/router";
 import { formUrl, isNullOrUndefined } from "@ide/ts-utils/src/lib/utils";
 import { getCookie } from "@ide/browser-utils/src/lib/utils";
@@ -8,6 +8,7 @@ import './Workspace.styles.scss'
 import { Awareness, Collaborator, Doc, Language, Role } from "@ide/shared/src/lib/types"
 import * as Y from "yjs"
 import { fromBase64ToUint8Array, fromUint8ArrayToBase64 } from "@ide/shared/src/lib/helpers"
+import { makeGetCall } from "@ide/ts-utils/src/lib/axios-utils"
 
 // import icon
 import CheckIcon from 'lucide-solid/icons/check';
@@ -23,6 +24,7 @@ import RunIcon from '@/assets/run/run.svg'
 import ReRunIcon from '@/assets/rerun/rerun.svg'
 import StopIcon from '@/assets/stop/stop.svg'
 import Loader2Icon from 'lucide-solid/icons/loader-2';
+import RefreshCcwIcon from 'lucide-solid/icons/refresh-ccw'
 
 // import components
 import PageLoader from "@/components/PageLoader/PageLoader";
@@ -49,12 +51,12 @@ import {
 } from "@/components/ui/combobox";
 
 // types
-type LanguageMetada = {id: Language, display: string, icon: string}
+type LanguageMetada = { id: Language, display: string, icon: string }
 
 // Constants
 const LANGUAGE_METADATA: Map<Language, LanguageMetada> = new Map([
-  [Language.PYTHON_3_12, {id: Language.PYTHON_3_12, display: 'Python (v3.12)', icon: ''}],
-  [Language.JS_NODE_20, {id: Language.JS_NODE_20, display: 'JavaScript (Node v20)', icon: ''}]
+  [Language.PYTHON_3_12, { id: Language.PYTHON_3_12, display: 'Python (v3.12)', icon: '' }],
+  [Language.JS_NODE_20, { id: Language.JS_NODE_20, display: 'JavaScript (Node v20)', icon: '' }]
 ])
 const LANGUAGES: LanguageMetada[] = [
   Language.PYTHON_3_12,
@@ -74,8 +76,8 @@ export const Workspace = () => {
 
   const handleIncomingMessage = (message: any) => {
     // console.log('incoming, message', message)
-    const {type, data, docDelta, awarenessDelta} = message
-    
+    const { type, data, docDelta, awarenessDelta } = message
+
     if (docDelta) {
       Y.applyUpdate(yDoc, fromBase64ToUint8Array(docDelta))
     }
@@ -91,7 +93,7 @@ export const Workspace = () => {
         Y.applyUpdate(yDoc, fromBase64ToUint8Array(data.doc))
         Y.applyUpdate(yAwareness, fromBase64ToUint8Array(data.awareness))
         setPageUrl()
-        setPageLoadApiInfo({state: ApiState.LOADED})
+        setPageLoadApiInfo({ state: ApiState.LOADED })
         console.log(doc())
         break
       }
@@ -100,7 +102,7 @@ export const Workspace = () => {
         break
       }
       case "error": {
-        setPageLoadApiInfo({state: ApiState.ERROR, error: data})
+        setPageLoadApiInfo({ state: ApiState.ERROR, error: data })
         console.error(data)
         break
       }
@@ -108,6 +110,7 @@ export const Workspace = () => {
   }
 
   const setPageUrl = () => {
+    // using window.history as i want to silently change the route without solid reloading the component
     if (doc().sharing) {
       if (doc().owner === user().id) {
         window.history.replaceState({}, "", `/documents/${doc().id}`)
@@ -119,6 +122,19 @@ export const Workspace = () => {
     else {
       window.history.replaceState({}, "", `/documents/${doc().id}`)
     }
+  }
+
+  const loadWorkspaces = async () => {
+    setDocumentsLoadInfo({ state: ApiState.LOADING })
+    setDocuments([])
+    const url = formUrl({ basePath: BACKEND_HTTP_BASE_URL, otherPath: "api/workspace/documents", params: { 'x-user-id': getCookie('x-user-id') } })
+    const { response, error } = await makeGetCall(url)
+    if (error) {
+      setDocumentsLoadInfo({ state: ApiState.ERROR, error })
+      return
+    }
+    setDocuments(response.data.documents)
+    setDocumentsLoadInfo({ state: ApiState.LOADED })
   }
 
   const toolbarJsx = () => {
@@ -149,66 +165,88 @@ export const Workspace = () => {
       </DropdownMenu>
     }
 
-    // const _allWorkspacesJsx = () => {
-    //   return <DropdownMenu placement="bottom-start">
-    //     <DropdownMenuTrigger
-    //       as={(props: DropdownMenuSubTriggerProps) => (
-    //         <Button class="p-0 shrink-0" variant="link" {...props}>Workspaces</Button>
-    //       )}
-    //     />
-    //     <DropdownMenuContent class="p-3 grid gap-y-3 w-[400px]">
-    //       <div class="flex items-center justify-between">
-    //         <div class="font-medium">All Workspaces</div>
-    //         <div>
-    //         <SwitchUI class="flex items-center space-x-2">
-    //           <SwitchControl>
-    //             <SwitchThumb />
-    //           </SwitchControl>
-    //           <SwitchLabel class="text-sm font-medium leading-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-70">
-    //             Show only mine
-    //           </SwitchLabel>
-    //         </SwitchUI>
-    //           </div>
-    //       </div>
-    //       <div>
-    //         <TextFieldRoot class="w-full">
-    //           <TextField type="text" placeholder="Search by name/owner" />
-    //         </TextFieldRoot>
-    //       </div>
-    //       <div>
-    //         <For each={documents()}>
-    //           {(item, index) =>
-    //             <DropdownMenuItem closeOnSelect={false} class="cursor-pointer" onClick={e => onDocumentChange(item.id)}>
-    //               <Show when={document().id === item.id} fallback={<div class="w-[16px] mr-2"></div>}>
-    //                 <CheckIcon size={16} class="mr-2"></CheckIcon>
-    //               </Show>
-    //               <div class="w-full flex items-center justify-between">
-    //                 <div>
-    //                   <div>{item.name}</div>
-    //                   <div class="text-xs">{item.owner}</div>
-    //                 </div>
-    //                 <div>
-    //                   <Show when={item.readOnly}>
-    //                     <Tooltip>
-    //                       <TooltipTrigger>
-    //                         <PencilOffIcon size={16} />
-    //                       </TooltipTrigger>
-    //                       <TooltipContent>
-    //                         <p>No write access</p>
-    //                       </TooltipContent>
-    //                     </Tooltip>
-    //                   </Show>
-    //                 </div>
-    //               </div>
-  
-    //             </DropdownMenuItem>
-    //           }
-    //         </For>
-    //       </div>
-  
-    //     </DropdownMenuContent>
-    //   </DropdownMenu>
-    // }
+    const _allWorkspacesJsx = () => {
+      return <DropdownMenu placement="bottom-start" onOpenChange={onWorkspaceDropdownOpen}>
+        <DropdownMenuTrigger
+          as={(props: DropdownMenuSubTriggerProps) => (
+            <Button class="p-0 shrink-0" variant="link" {...props}>Workspaces</Button>
+          )}
+        />
+        <DropdownMenuContent class="p-3 grid gap-y-3 w-[400px]">
+          <Switch>
+            <Match when={documentsLoadInfo().state === ApiState.LOADING}>
+              <div class="">
+                Loading...
+              </div>
+            </Match>
+            <Match when={documentsLoadInfo().state === ApiState.ERROR}>
+              <div class="text-red-500">{documentsLoadInfo().error?.message}</div>
+            </Match>
+            <Match when={documentsLoadInfo().state === ApiState.LOADED}>
+              <div class="flex items-center justify-between">
+                <div class="font-medium">All Workspaces</div>
+                <div class="flex items-center gap-x-3">
+                  <div>
+                    <SwitchUI class="flex items-center space-x-2" checked={showMyDocuments()} onChange={(e) => setShowMyDocuments(!showMyDocuments())}>
+                      <SwitchControl>
+                        <SwitchThumb />
+                      </SwitchControl>
+                      <SwitchLabel class="cursor-pointer text-sm font-medium leading-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-70">
+                        Show only mine
+                      </SwitchLabel>
+                    </SwitchUI>
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <RefreshCcwIcon size={14} onClick={reloadWorkspaces} />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Refresh</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+              <div>
+                <TextFieldRoot class="w-full">
+                  <TextField type="text" placeholder="Search by name/user" value={workspacesSearchText()} onInput={(e) => setWorkspacesSearchText((e.target as any).value.trim())} />
+                </TextFieldRoot>
+              </div>
+              <div>
+                <For each={filteredDocuments()}>
+                  {(item, index) => <DropdownMenuItem closeOnSelect={false} class="cursor-pointer" onClick={e => onDocumentChange(item)}>
+                    <Show when={doc().id === item.id} fallback={<div class="w-[16px] mr-2"></div>}>
+                      <CheckIcon size={16} class="mr-2"></CheckIcon>
+                    </Show>
+                    <div class="w-full flex items-center justify-between">
+                      <div>
+                        <div>{item.name}</div>
+                        <div class="text-xs">{item.owner_name || '-'}</div>
+                      </div>
+                      {/* <div>
+                        <Show when={item.readOnly}>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <PencilOffIcon size={16} />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>No write access</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </Show>
+                      </div> */}
+                    </div>
+
+                  </DropdownMenuItem>
+                  }
+                </For>
+              </div>
+
+            </Match>
+          </Switch>
+
+        </DropdownMenuContent>
+      </DropdownMenu>
+    }
 
     const _shareJsx = () => {
       return <DropdownMenu placement="bottom-start">
@@ -225,7 +263,7 @@ export const Workspace = () => {
                     {totalCollaborators()}
                   </div>
                 </Show>
-  
+
               </div>
             </Button>
           )}
@@ -251,13 +289,13 @@ export const Workspace = () => {
                 </div>
               </div>
             </Show>
-           
-  
+
+
             <Show when={doc().sharing}>
               <div class="bg-primary/20 h-[1px] -ml-3 -mr-3"></div>
               <div>
                 <TextFieldRoot class="w-full">
-                  <TextFieldLabel>Your name</TextFieldLabel>
+                  <TextFieldLabel>My name</TextFieldLabel>
                   <div class="relative">
                     <TextField type="text" placeholder="Amazing you" value={user().name} onInput={(e) => onUserNameChange((e.target as any).value)} />
                     {/* <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -266,7 +304,7 @@ export const Workspace = () => {
                   </div>
                 </TextFieldRoot>
               </div>
-  
+
               {/* <div class="flex items-center gap-x-2">
                 <div class="font-medium text-sm">Allow others to edit</div>
                 <SwitchUI class="mt-1" checked={readOnly()} onChange={(e) => toogleDocReadOnly()}>
@@ -275,7 +313,7 @@ export const Workspace = () => {
                   </SwitchControl>
                 </SwitchUI>
               </div> */}
-  
+
               {/* <div class="flex items-center gap-x-2">
                 <div class="font-medium text-sm">Sync run/debug sessions</div>
                 <SwitchUI class="mt-1" checked={syncRunSession()} onChange={(e) => setSyncRunSession(!syncRunSession())}>
@@ -284,12 +322,12 @@ export const Workspace = () => {
                   </SwitchControl>
                 </SwitchUI>
               </div> */}
-  
+
               <div class="flex items-center text-sm">
                 <div class="w-full rounded-tl-[6px] rounded-bl-[6px] bg-secondary">
-                <TextFieldRoot class="w-full">
-                  <TextField type="text" readOnly value={roomLink()} />
-                </TextFieldRoot>
+                  <TextFieldRoot class="w-full">
+                    <TextField type="text" readOnly value={roomLink()} />
+                  </TextFieldRoot>
                 </div>
                 <div class={"shrink-0 flex items-center p-2 gap-x-2 bg-primary/20 rounded-tr-[6px] rounded-br-[6px] " + (!isRoomLinkCopied() ? 'cursor-pointer' : '')} onClick={() => !isRoomLinkCopied() && copyRoomLink()}>
                   <LinkIcon size={16} />
@@ -302,7 +340,7 @@ export const Workspace = () => {
                   <a class={"text-xs font-medium " + (!isNewRoomLinkGenerated() ? 'cursor-pointer' : '')} onClick={() => !isNewRoomLinkGenerated() && generateNewRoomLink()}>{isNewRoomLinkGenerated() ? 'New link generated!' : 'Generate a new link'}</a>
                 </div>
               </Show>
-             
+
             </Show>
           </div>
         </DropdownMenuContent>
@@ -325,79 +363,79 @@ export const Workspace = () => {
     }
 
 
-  const _settingsJsx = () => {
-    const fontSizes = [
-      "12px", "13px", "14px", "15px", "16px", "17px", "18px", "19px", "20px", "21px"
-    ]
-    const tabSizes = ['2 spaces', '4 spaces']
-    const _menuDropdown = (options: any[], value: any, onChange) => {
-      return <Combobox
-        options={options}
-        value={value}
-        onChange={(e) => onChange(e)}
-        itemComponent={props => <ComboboxItem class="p-1 cursor-pointer" item={props.item}>{props.item.rawValue}</ComboboxItem>}
-      >
-        <ComboboxTrigger>
-          <div class="text-sm mr-2">{value}</div>
-        </ComboboxTrigger>
-        <ComboboxContent class="min-w-[auto]" />
-      </Combobox>
+    const _settingsJsx = () => {
+      const fontSizes = [
+        "12px", "13px", "14px", "15px", "16px", "17px", "18px", "19px", "20px", "21px"
+      ]
+      const tabSizes = ['2 spaces', '4 spaces']
+      const _menuDropdown = (options: any[], value: any, onChange) => {
+        return <Combobox
+          options={options}
+          value={value}
+          onChange={(e) => onChange(e)}
+          itemComponent={props => <ComboboxItem class="p-1 cursor-pointer" item={props.item}>{props.item.rawValue}</ComboboxItem>}
+        >
+          <ComboboxTrigger>
+            <div class="text-sm mr-2">{value}</div>
+          </ComboboxTrigger>
+          <ComboboxContent class="min-w-[auto]" />
+        </Combobox>
+      }
+
+      return <DropdownMenu placement="bottom-start">
+        <DropdownMenuTrigger
+          as={(props: DropdownMenuSubTriggerProps) => (
+            <div class="flex items-center" {...(props as any)} >
+              <SettingsIcon size={18} />
+            </div>
+          )}
+        />
+        <DropdownMenuContent class="p-3 grid gap-y-3 min-w-[250px]">
+          <div class="font-medium">Settings</div>
+          <div class="grid gap-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-medium text-sm">Theme</div>
+              <div>
+                {_menuDropdown(['Light', 'Dark'], 'Light', (e) => console.log(e))}
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-medium text-sm">Font size</div>
+              <div>
+                {_menuDropdown(fontSizes, '12px', (e) => console.log(e))}
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-medium text-sm">Tab size</div>
+              <div>
+                {_menuDropdown(tabSizes, '2 spaces', (e) => console.log(e))}
+              </div>
+            </div>
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
     }
 
-    return <DropdownMenu placement="bottom-start">
-      <DropdownMenuTrigger
-        as={(props: DropdownMenuSubTriggerProps) => (
-          <div class="flex items-center" {...(props as any)} >
-            <SettingsIcon size={18} />
-          </div>
-        )}
-      />
-      <DropdownMenuContent class="p-3 grid gap-y-3 min-w-[250px]">
-        <div class="font-medium">Settings</div>
-        <div class="grid gap-y-3">
-          <div class="flex items-center justify-between gap-2">
-            <div class="font-medium text-sm">Theme</div>
-            <div>
-              {_menuDropdown(['Light', 'Dark'], 'Light', (e) => console.log(e))}
-            </div>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <div class="font-medium text-sm">Font size</div>
-            <div>
-              {_menuDropdown(fontSizes, '12px', (e) => console.log(e))}
-            </div>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <div class="font-medium text-sm">Tab size</div>
-            <div>
-              {_menuDropdown(tabSizes, '2 spaces', (e) => console.log(e))}
-            </div>
-          </div>
-        </div>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  }
 
-  
-  const _accountJsx = () => {
-    return  <DropdownMenu placement="bottom-start">
-    <DropdownMenuTrigger
-      as={(props: DropdownMenuSubTriggerProps) => (
-        <div class="flex items-center" {...(props as any)} >
-          <CircleUserRound size={18} />
-        </div>
-      )}
-    />
-    <DropdownMenuContent class="p-3 grid gap-y-3 min-w-[250px]">
-      <div>
-        <TextFieldRoot class="w-full">
-          <TextFieldLabel>Your name</TextFieldLabel>
-          <TextField type="text" placeholder="Amazing you" value={user().name} onInput={(e) => onUserNameChange((e.target as any).value)}/>
-        </TextFieldRoot>
-      </div>
-    </DropdownMenuContent>
-  </DropdownMenu>
-  }
+    const _accountJsx = () => {
+      return <DropdownMenu placement="bottom-start">
+        <DropdownMenuTrigger
+          as={(props: DropdownMenuSubTriggerProps) => (
+            <div class="flex items-center" {...(props as any)} >
+              <CircleUserRound size={18} />
+            </div>
+          )}
+        />
+        <DropdownMenuContent class="p-3 grid gap-y-3 min-w-[250px]">
+          <div>
+            <TextFieldRoot class="w-full">
+              <TextFieldLabel>My name</TextFieldLabel>
+              <TextField type="text" placeholder="Amazing you" value={user().name} onInput={(e) => onUserNameChange((e.target as any).value)} />
+            </TextFieldRoot>
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    }
 
     return <div class='shrink-0 flex justify-between items-center px-5 py-2'>
       {/* Logo */}
@@ -411,7 +449,7 @@ export const Workspace = () => {
             <TextField type="text" placeholder="Type your doc name..." class="bg-background" value={doc().name} onInput={(e) => onDocNameUpdate(e.currentTarget.value)} />
           </TextFieldRoot>
         </div>
-        {/* {_allWorkspacesJsx()} */}
+        {_allWorkspacesJsx()}
       </div>
 
       {/* Language selection */}
@@ -421,12 +459,12 @@ export const Workspace = () => {
 
       {/* Run icons */}
       {/* <div class="flex gap-4"> */}
-        {/* @ts-ignore */}
-        {/* <RunIcon width="18" class="cursor-pointer" /> */}
-        {/* @ts-ignore */}
-        {/* <ReRunIcon width="18" class="cursor-pointer" /> */}
-        {/* @ts-ignore */}
-        {/* <StopIcon width="18" class="cursor-pointer" /> */}
+      {/* @ts-ignore */}
+      {/* <RunIcon width="18" class="cursor-pointer" /> */}
+      {/* @ts-ignore */}
+      {/* <ReRunIcon width="18" class="cursor-pointer" /> */}
+      {/* @ts-ignore */}
+      {/* <StopIcon width="18" class="cursor-pointer" /> */}
       {/* </div> */}
 
       {/* Share & Settin`gs */}
@@ -438,23 +476,28 @@ export const Workspace = () => {
       </div>
     </div>
   }
-  
+
 
   // variables
-  const params = useParams()
-  const navigate = useNavigate();
-  const socket = new WebSocket(formUrl({basePath: BACKEND_SOCKET_BASE_URL, otherPath: "api/workspace/room", params: {documentId: params.documentId, roomId: params.roomId, 'x-user-id': getCookie('x-user-id')}}))
-  const [pageLoadApiInfo, setPageLoadApiInfo] = createSignal<ApiLoadInfo>({state: ApiState.LOADING})
-  const [socketStatus, setSocketStatus] = createSignal<"open" | "close">("close")
-  const [user, setUser] = createSignal<any>()
-  const [role, setRole] = createSignal<Role>()
-  
   let yDoc: Y.Doc = new Y.Doc();
   let yAwareness: Y.Doc = new Y.Doc()
   const [doc, setDoc] = createSignal<Doc>()
   const [awareness, setAwareness] = createSignal<Awareness>()
   window['doc'] = yDoc
   window['awareness'] = yAwareness
+
+  const params = useParams()
+  const navigate = useNavigate();
+  const socket = new WebSocket(formUrl({ basePath: BACKEND_SOCKET_BASE_URL, otherPath: "api/workspace/room", params: { documentId: params.documentId, roomId: params.roomId, 'x-user-id': getCookie('x-user-id') } }))
+  const [pageLoadApiInfo, setPageLoadApiInfo] = createSignal<ApiLoadInfo>({ state: ApiState.LOADING })
+  const [socketStatus, setSocketStatus] = createSignal<"open" | "close">("close")
+  const [user, setUser] = createSignal<any>()
+  const [role, setRole] = createSignal<Role>()
+
+  const [documentsLoadInfo, setDocumentsLoadInfo] = createSignal<ApiLoadInfo>({ state: ApiState.NOT_LOADED })
+  const [documents, setDocuments] = createSignal([])
+  const [showMyDocuments, setShowMyDocuments] = createSignal(false)
+  const [workspacesSearchText, setWorkspacesSearchText] = createSignal("")
 
   const [isRoomLinkCopied, setIsRoomLinkCopied] = createSignal(false)
   const [isNewRoomLinkGenerated, setIsNewLinkGenerated] = createSignal(false)
@@ -467,12 +510,22 @@ export const Workspace = () => {
 
   // computed variables
   const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
-  const isOwner = createMemo(() => pageLoaded() ? doc().owner === user().id: false)
+  const isOwner = createMemo(() => pageLoaded() ? doc().owner === user().id : false)
+  const filteredDocuments = createMemo(() => documents()
+    .map((document) => document.id === doc().id ? { ...document, ...doc() } : document)
+    .map((document) => ({...document, owner_name: awareness().collaborators[document.owner]?.name || document.owner_name})) 
+    .filter((document) => !showMyDocuments() ? true : document.owner === user().id)
+    .filter((document) => !workspacesSearchText() ? true : document.name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()) || document.owner_name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()))
+   
+  )
+  
   const totalCollaborators = createMemo(() => pageLoaded() ? Object.keys(awareness().collaborators).length : 0)
   const roomLink = createMemo(() => pageLoaded() ? `${window.location.origin}/rooms/${doc().roomId}` : "")
 
-
-
+  setInterval(() => {
+    console.log('showMyDocuments', showMyDocuments())
+    console.log('workspacesSearchText', workspacesSearchText())
+  }, 5000)
   // events
   // socket events
   socket.onopen = (event) => {
@@ -497,11 +550,11 @@ export const Workspace = () => {
   // yjs events
   yDoc.on("update", (update, _, __, tr) => {
     console.log('update', tr.local, tr.origin)
-    const {type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
     if (tr.local) {
       // change made by current user, send to peers
       const base64Update = fromUint8ArrayToBase64(update)
-      const message = {type, data, docDelta: base64Update}
+      const message = { type, data, docDelta: base64Update }
       sendMessage(message)
     }
     // update local doc
@@ -509,11 +562,11 @@ export const Workspace = () => {
   })
 
   yAwareness.on("update", (update, _, __, tr) => {
-    const {type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
     if (tr.local) {
       // change made by current user, send to peers
       const base64Update = fromUint8ArrayToBase64(update)
-      const message = {type, data, awarenessDelta: base64Update}
+      const message = { type, data, awarenessDelta: base64Update }
       sendMessage(message)
     }
     setAwareness(yAwareness.getMap().toJSON() as any)
@@ -524,13 +577,34 @@ export const Workspace = () => {
   const onDocNameUpdate = (name: string) => {
     yDoc.transact(() => {
       yDoc.getMap().set('name', name)
-    }, {type: 'updateDocName'})
+    }, { type: 'updateDocName' })
+  }
+
+  const onDocumentChange = (document: any) => {
+    if (document.id == doc().id) {
+      return
+    }
+    window.location.href = `/documents/${document.id}`;
+  }
+
+  const onWorkspaceDropdownOpen = async () => {
+    if ([ApiState.LOADING, ApiState.LOADED].includes(documentsLoadInfo().state)) {
+      return
+    }
+    await loadWorkspaces()
+  }
+
+  const reloadWorkspaces = async () => {
+    if ([ApiState.LOADING].includes(documentsLoadInfo().state)) {
+      return
+    }
+    await loadWorkspaces()
   }
 
   const onLanguageChange = (language: Language) => {
     yDoc.transact(() => {
-      yDoc.getMap().set("activeLanguage", language) 
-    }, {type: 'updateLanguage'})
+      yDoc.getMap().set("activeLanguage", language)
+    }, { type: 'updateLanguage' })
   }
 
   const toggleSharing = () => {
@@ -540,15 +614,15 @@ export const Workspace = () => {
       if (sharing && !doc().roomId) {
         yDoc.getMap().set("roomId", crypto.randomUUID())
       }
-    }, {type: 'toggleSharing'})
+    }, { type: 'toggleSharing' })
     setPageUrl()
   }
 
   const onUserNameChange = (name: string) => {
-    setUser({...user(), name: name});
+    setUser({ ...user(), name: name });
     yAwareness.transact(() => {
       (yAwareness.getMap().get("collaborators") as Y.Map<any>).get(user().id).set("name", name)
-    }, {type: 'updateUserName'})
+    }, { type: 'updateUserName' })
   }
 
   const copyRoomLink = async () => {
@@ -565,7 +639,7 @@ export const Workspace = () => {
   const generateNewRoomLink = () => {
     yDoc.transact(() => {
       yDoc.getMap().set("roomId", crypto.randomUUID())
-    }, {type: 'changeRoomLink'})
+    }, { type: 'changeRoomLink' })
     setIsNewLinkGenerated(true)
     setTimeout(() => setIsNewLinkGenerated(false), 2000)
     setPageUrl()

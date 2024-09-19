@@ -157,13 +157,13 @@ const getUserLastOpenedDocWithAccess = async (userId: string) => {
 
 const addNewDocToDb = async (owner: string) => {
   const pool = await DB.getPool();
-  pool.transaction(async (_) => {
+  return pool.transaction(async (t) => {
     let query = sql.unsafe`
       INSERT INTO document (owner)
       VALUES (${owner})
       RETURNING *
     `;
-    const document = await pool.one(query)
+    const document = await t.one(query)
 
     query = sql.unsafe`
       INSERT INTO document_usage (user_id, document_id, last_opened_on)
@@ -172,20 +172,20 @@ const addNewDocToDb = async (owner: string) => {
       DO UPDATE SET 
         last_opened_on = EXCLUDED.last_opened_on
     `
-    await pool.query(query)
+    await t.query(query)
 
     return document
   })
 }
 
-const updateLastOpenedOn = async (userId: string, documentId: string) => {
-  console.log(userId, documentId)
+const updateLastOpenedOn = async (userId: string, documentId: string, roomId: string) => {
   const pool = await DB.getPool()
   const query = sql.unsafe`
-    INSERT INTO document_usage (user_id, document_id, last_opened_on)
-    VALUES (${userId}, ${documentId}, NOW())
+    INSERT INTO document_usage (user_id, document_id, last_known_room_id, last_opened_on)
+    VALUES (${userId}, ${documentId}, ${roomId}, NOW())
     ON CONFLICT (user_id, document_id)
     DO UPDATE SET 
+      last_known_room_id = EXCLUDED.last_known_room_id,
       last_opened_on = EXCLUDED.last_opened_on
   `
   await pool.query(query)
@@ -252,6 +252,7 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
           closeSocket: true
         })
       }
+      await updateLastOpenedOn(user.id, documentId, docToJson(room.doc).roomId)
     }
     else {
       const document = await getDocumentByDocIdOrRoomId(documentId, roomId)
@@ -268,8 +269,8 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
         // checking again, as things might have changes since last await
         addNewRoom(document)
       }
+      await updateLastOpenedOn(user.id, documentId, document.room_id)
     }
-    await updateLastOpenedOn(user.id, documentId)
   }
   else {
     let document = await getUserLastOpenedDocWithAccess(user.id)
@@ -281,7 +282,7 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
       // checking again, as things might have changes since last await
       addNewRoom(document)
     }
-    await updateLastOpenedOn(user.id, documentId)
+    await updateLastOpenedOn(user.id, documentId, document.room_id)
   }
 
   // Session specific variables
@@ -372,4 +373,24 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
       delete userIdSocketMap[user.id]
     }
   })
+}
+
+export const getDocuments = async (req: Request, res: Response, next: NextFunction) => {
+  const {user} = req
+  const pool = await DB.getPool()
+
+  const query = sql.unsafe`
+    SELECT document.*, app_user.name AS owner_name FROM document
+    LEFT JOIN document_usage
+    ON document.id = document_usage.document_id
+    LEFT JOIN app_user
+    ON app_user.id = document.owner
+    WHERE
+      document_usage.user_id = ${user.id} AND
+      (document.owner = ${user.id} OR (document.sharing AND document.room_id = document_usage.last_known_room_id))  -- access check
+    ORDER BY document_usage.last_opened_on DESC
+  `
+  const documents =  await pool.any(query)
+  return res.status(200).jsonp({documents})
+    
 }
