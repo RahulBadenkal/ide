@@ -5,22 +5,167 @@ import { NextFunction, Request, Response } from 'express';
 import { sql } from 'slonik';
 import * as ws from "ws";
 import * as Y from 'yjs'
+import { Role, Doc, Awareness, Language } from "@ide/shared/src/lib/types"
+import { fromBase64ToUint8Array, fromUint8ArrayToBase64 } from "@ide/shared/src/lib/helpers"
+import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
+import { isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
 
-enum Role {
-  OWNER = 3,
-  WRITE = 2,
-  READ = 1,
-  NO_ACCESS = 0
+
+const getUserRole = (userId: string, document: {owner: string, sharing: boolean}): Role => {
+  if (document.owner === userId) return Role.OWNER
+  if (document.sharing) return Role.WRITE
+  return Role.NO_ACCESS
 }
 
-const getUserRole = (userId: string, document: any): Role => {
-  if (document.owner === userId) return Role.OWNER 
-  return document.isSharing ? (
-    document.room_write_access ? Role.WRITE : Role.READ 
-  ) : Role.NO_ACCESS
+type Room = {doc: Y.Doc, awareness: Y.Doc, userIdSocketMap: {[userId: string]: ws.WebSocket}, updateDocNameState: ApiState, updateShareInfoState: ApiState}
+
+const newDoc = (document: any) => {
+  const doc = new Y.Doc()
+
+  // Create the root map
+  const rootMap = doc.getMap<any>();
+
+  rootMap.set('id', document.id);
+  rootMap.set('name', document.name);
+  rootMap.set('owner', document.owner);
+  rootMap.set('sharing', document.sharing);
+  rootMap.set('roomId', document.room_id);
+
+  rootMap.set('activeLanguage', Language.PYTHON_3_12);
+  const languageCodeMap = new Y.Map();
+  rootMap.set('languageCodeMap', languageCodeMap);
+
+  const whiteboard = new Y.Array();
+  rootMap.set('whiteboard', whiteboard);
+ 
+  return doc
+}
+
+const docToJson = (doc: Y.Doc): Doc => {
+  return doc.getMap().toJSON() as any
+}
+
+const awarenessToJson = (awareness: Y.Doc): Awareness => {
+  return awareness.getMap().toJSON() as any
+}
+
+const newAwareness = () => {
+  const doc = new Y.Doc()
+
+  // Create the root map
+  const rootMap = doc.getMap<any>();
+
+  const collaborators = new Y.Map();
+  rootMap.set('collaborators', collaborators);
+
+  return doc
+}
+
+const newRoom = (document): Room => {
+  return {
+    doc: newDoc(document),
+    awareness: newAwareness(),
+    userIdSocketMap: {},
+    updateDocNameState: ApiState.NOT_LOADED,
+    updateShareInfoState: ApiState.NOT_LOADED
+  }
+}
+
+const updateDocName = async (docId: string) => {
+  const pool = await DB.getPool();
+  const room = rooms[docId]
+  if (room.updateDocNameState === ApiState.LOADING) {
+    return
+  }
+  let name = room.doc.getMap().get("name") as string
+  room.updateDocNameState = ApiState.LOADING
+  const query = sql.unsafe`
+    UPDATE document 
+    SET name = ${name} 
+    WHERE id::VARCHAR = ${docId}
+  `;
+  try {
+    await pool.query(query)
+    room.updateDocNameState = ApiState.LOADED
+  }
+  catch (error) {
+    room.updateDocNameState = ApiState.ERROR
+    console.error(`Failed to update doc name for doc: ${docId}`)
+    console.error(error)
+  }
+
+  let newName = room.doc.getMap().get("name") as string
+  if (newName !== name) {
+    updateDocName(docId)
+  }
+}
+
+const updateShareInfo = async (docId: string) => {
+  const pool = await DB.getPool();
+  const room = rooms[docId]
+  if (room.updateShareInfoState === ApiState.LOADING) {
+    return
+  }
+  let [sharing, roomId] = [room.doc.getMap().get("sharing") as boolean, room.doc.getMap().get("roomId") as string]
+  room.updateShareInfoState = ApiState.LOADING
+  const query = sql.unsafe`
+    UPDATE document 
+    SET sharing = ${sharing}, room_id = ${roomId} 
+    WHERE id::VARCHAR = ${docId}
+  `;
+  try {
+    await pool.query(query)
+    room.updateShareInfoState = ApiState.LOADED
+  }
+  catch (error) {
+    room.updateShareInfoState = ApiState.ERROR
+    console.error(`Failed to update share info for doc: ${docId}`)
+    console.error(error)
+  }
+
+  let [newSharing, newRoomId] = [room.doc.getMap().get("sharing") as boolean, room.doc.getMap().get("roomId") as string]
+  if (newSharing !== sharing || newRoomId !== roomId) {
+    updateShareInfo(docId)
+  }
+}
+
+const getDocumentByDocIdOrRoomId = async (documentId?: string, roomId?: string) => {
+  const pool = await DB.getPool();
+  const query = documentId ? sql.unsafe`
+    SELECT * FROM document
+    WHERE id::VARCHAR = ${documentId}
+  ` : sql.unsafe`SELECT * FROM document WHERE room_id::VARCHAR = ${roomId}` ;
+  const document = await pool.maybeOne(query)
+  return document
+}
+
+const getUserLastOpenedDoc = async (userId: string) => {
+  const pool = await DB.getPool();
+  const query = sql.unsafe`
+    SELECT document.* FROM document
+    LEFT JOIN document_usage
+    ON document.id = document_usage.document_id
+    WHERE document_usage.user_id = ${userId}
+    ORDER BY document_usage.last_opened_on DESC
+    LIMIT 1;
+  `;
+  const document = await pool.maybeOne(query)
+  return document
+}
+
+const addNewDocToDb = async (owner: string) => {
+  const pool = await DB.getPool();
+  const query = sql.unsafe`
+      INSERT INTO document (owner)
+      VALUES (${owner})
+      RETURNING *
+  `;
+  const document = await pool.one(query)
+  return document
 }
 
 const updateLastOpenedOn = async (userId: string, documentId: string) => {
+  console.log(userId, documentId)
   const pool = await DB.getPool()
   const query = sql.unsafe`
     INSERT INTO document_usage (user_id, document_id, last_opened_on)
@@ -29,104 +174,174 @@ const updateLastOpenedOn = async (userId: string, documentId: string) => {
     DO UPDATE SET 
       last_opened_on = EXCLUDED.last_opened_on
   `
-  await pool.query(query, [userId, documentId])
+  await pool.query(query)
 }
 
-const fetchUserDocuments = async (userId: string) => {
-  const pool = await DB.getPool()
-  const query = sql.unsafe`
-    SELECT * FROM document_usage
-    LEFT JOIN document
-    ON document_usage.document_id = document.id
-    WHERE user_id = ${userId} AND (document.owner = ${userId} OR document.is_sharing)
-    ORDER BY last_opened_on DESC
-  `
-  const documents = (await pool.query(query, [userId])).rows
-  for (let document of documents) {
-    document.role = getUserRole(userId, document)
-  }
-  return documents
+const addNewRoom = (document) => {
+  const room = newRoom(document)
+  rooms[document.id] = room
+
+  const {doc, awareness, userIdSocketMap} = room
+
+  doc.on("update", (update, _, __, tr) => {
+    console.log('onDocUpdate', tr.local, tr.origin, docToJson(doc))
+    const {author = null, type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+
+    const collaborators = awarenessToJson(awareness).collaborators
+    for (let collaboratorId of Object.keys(collaborators)) {
+      if (tr.local || author !== collaboratorId) {
+        // send to peers
+        const base64Update = fromUint8ArrayToBase64(update)
+        const message = {type, data, docDelta: base64Update}
+        const clientWs = userIdSocketMap[collaboratorId]
+        clientWs.send(JSON.stringify(message))
+      }
+    }  
+  })
+
+  awareness.on("update", (update, _, __, tr) => {
+    console.log('onAwarenessUpdate', tr.local, tr.origin)
+    const {author = null, type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+
+    const collaborators = awarenessToJson(awareness).collaborators
+    for (let collaboratorId of Object.keys(collaborators)) {
+      if (tr.local || author !== collaboratorId) {
+        // send to peers
+        const base64Update = fromUint8ArrayToBase64(update)
+        const message = {type, data, awarenessDelta: base64Update}
+        const clientWs = userIdSocketMap[collaboratorId]
+        clientWs.send(JSON.stringify(message))
+      }
+    }  
+  })
 }
 
-// This is persisted doc
-const newDoc = () => {
-  return {
-    // room related variables
-    isSharing: false,
-    roomId: "",
-
-    // code editor variables
-    activeLanguage: '',
-    languageCodeMap: {},
-    
-    // whiteboard variables
-    whiteboard: '',
-  }
-}
-
-const newSessionDoc = () => {
-  return {
-    
-  }
-}
-
-const yDocs = {}
+const rooms: {[docId: string]: Room} = {}
 
 export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentId?: string, roomId?: string}>) => {
   console.log('New Client connected');
 
-  const {documentId, roomId} = req.query
-  const user = req.user
+  let {documentId, roomId} = req.query
   const pool = await DB.getPool()
+  const user = req.user
+  let updateUserNameState: ApiState = ApiState.NOT_LOADED
 
   if (documentId || roomId) {
-    let query = documentId ? sql.unsafe`
-      SELECT * FROM document
-      WHERE id::TEXT = ${documentId}
-    ` : sql.unsafe`
-      SELECT * FROM document
-      WHERE room_id::TEXT = ${roomId}
-    `
-    const document = (await pool.query(query, [documentId || roomId])).rows[0]
-    const role = document ? getUserRole(user.id, document) : Role.NO_ACCESS
-    if (role <= Role.NO_ACCESS) {
-      throw new SocketError({
-        status: 403,
-        code: 'forbidden',
-        message: `You don't have access to the document`,
-        closeSocket: true
-      })
+    documentId = documentId || Object.keys(rooms).find((x) => rooms[x].doc.getMap().get("roomId") === roomId)
+    const room = rooms[documentId]
+    if (room) {
+      if (getUserRole(user.id, docToJson(room.doc)) <= Role.NO_ACCESS) {
+        throw new SocketError({
+          status: 403,
+          code: 'forbidden',
+          message: `You don't have access to the document`,
+          closeSocket: true
+        })
+      }
     }
-    document.role = role
-    await updateLastOpenedOn(user.id, document.id)
-    const documents = await fetchUserDocuments(user.id)
-    yDocs[documentId] = yDocs[documentId] || new Y.Doc()
-    ws.send(JSON.stringify({type: 'init', data: {user, document, documents}}))
+    else {
+      const document = await getDocumentByDocIdOrRoomId(documentId, roomId)
+      if (!document || (getUserRole(user.id, document) <= Role.NO_ACCESS)) {
+        throw new SocketError({
+          status: 403,
+          code: 'forbidden',
+          message: `You don't have access to the document`,
+          closeSocket: true
+        })
+      }
+      documentId = document.id
+      if (!rooms[documentId]) {
+        // checking again, as things might have changes since last await
+        addNewRoom(document)
+      }
+    }
+    await updateLastOpenedOn(user.id, documentId)
   }
   else {
-    let query = sql.unsafe`
-      SELECT document.* FROM document
-      LEFT JOIN document_usage
-      ON document.id = document_usage.document_id
-      ORDER BY document_usage.last_opened_on DESC
-      LIMIT 1;
-    `
-    let document = (await pool.query(query)).rows[0]
+    let document = await getUserLastOpenedDoc(user.id)
     if (!document) {
-      query = sql.unsafe`
-        INSERT INTO document (owner)
-        VALUES (${user.id})
-        RETURNING *
-      `
-      document = (await pool.query(query, [user.id])).rows[0]
+      document = await addNewDocToDb(user.id)
     }
-    document.role = getUserRole(user.id, document)
-    await updateLastOpenedOn(user.id, document.id)
-    const documents = await fetchUserDocuments(user.id)
-    ws.send(JSON.stringify({type: 'init', data: {user, document, documents}}))
+    documentId = document.id
+    if (!rooms[documentId]) {
+      // checking again, as things might have changes since last await
+      addNewRoom(document)
+    }
+    await updateLastOpenedOn(user.id, documentId)
   }
-  
-  // ws.on('message', (msg) => {
-  //   console.log(msg)
-  // });
+
+  // Session specific variables
+  const room = rooms[documentId]
+  const {doc, awareness, userIdSocketMap} = room;
+  const role = getUserRole(user.id, docToJson(room.doc));
+  ws.send(JSON.stringify({type: 'init', data: {user, role, doc: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(room.doc)), awareness: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(room.awareness))}}))
+
+  userIdSocketMap[user.id] = ws
+
+  const collaborator = new Y.Map()
+  collaborator.set("id", user.id)
+  collaborator.set("name", user.name);
+  (awareness.getMap().get("collaborators") as any).set(user.id, collaborator)
+
+  const _updateUserName = async () => {
+    if (updateUserNameState === ApiState.LOADING) {
+      return
+    }
+    let name = (awareness.getMap().get("collaborators") as any).get(user.id).get("name")
+    updateUserNameState = ApiState.LOADING
+    const query = sql.unsafe`
+      UPDATE app_user 
+      SET name = ${name} 
+      WHERE id::VARCHAR = ${user.id}
+    `;
+    try {
+      await pool.query(query)
+      updateUserNameState = ApiState.LOADED
+    }
+    catch (error) {
+      updateUserNameState = ApiState.ERROR
+      console.error(`Failed to update user name for user: ${user.id}`)
+      console.error(error)
+    }
+
+    const x = (awareness.getMap().get("collaborators") as any).get(user.id)
+    if (x && x.get("name") !== name) {
+      _updateUserName()
+    }
+  }
+
+  ws.on('message', (event) => {
+    const message = JSON.parse(event.toString())
+    const {type, data, docDelta, awarenessDelta} = message
+
+    if (docDelta) {
+      Y.applyUpdate(doc, fromBase64ToUint8Array(docDelta), {author: user.id, type, data})
+    }
+    if (awarenessDelta) {
+      Y.applyUpdate(awareness, fromBase64ToUint8Array(awarenessDelta), {author: user.id, type, data})
+    }
+
+    switch (type) {
+      case "updateDocName": {
+        updateDocName(documentId)
+        break
+      }
+      case "toggleSharing":
+      case "changeRoomLink": {
+        updateShareInfo(documentId)
+        break
+      }
+      case "updateUserName": {
+        _updateUserName()
+        break
+      }
+    }
+  });
+
+  ws.on("close", () => {
+    if (awareness) {
+      (awareness.getMap().get("collaborators") as any).delete(user.id)
+      delete userIdSocketMap[user.id]
+    }
+  })
 }

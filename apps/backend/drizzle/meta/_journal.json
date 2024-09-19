@@ -85,6 +85,27 @@
       "when": 1726590735281,
       "tag": "0011_rapid_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1726597147836,
+      "tag": "0012_gifted_master_chief",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1726717002026,
+      "tag": "0013_tan_bloodstorm",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1726718700709,
+      "tag": "0014_slim_skaar",
+      "breakpoints": true
     }
   ]
 }

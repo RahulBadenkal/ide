@@ -25,6 +25,7 @@ https://ide.rahulbadenkal.com/
 
 
 # Advanced features
+- Shared cursor positions
 - Testing
 - Workspaces - Create more than 1 document
 - File system (Multiple file support)
@@ -88,6 +89,10 @@ https://ide.rahulbadenkal.com/
   - https://github.com/microsoft/monaco-editor-webpack-plugin/issues/135
 
 - Somebody implemeted yjs in excalidraw -> https://github.com/satoren/y-phoenix-channel, mainly this file: https://github.com/satoren/y-phoenix-channel/blob/bf7c01966e15e5214f8a93f0a6200e6db787ccde/assets/js/excalidraw.tsx
+
+- Shared cursor positions over dom -> https://ably.com/blog/cursor-everywhere-experiment
+
+- A practical guide on yjs - https://discuss.yjs.dev/t/one-large-y-doc-or-many-smaller-y-doc/922/2
 
 # Additional references
 - Tells that in monacl syntax highlighting and lsp features (for json/html/css/js/ts) are tightly coupled -  https://github.com/microsoft/monaco-editor/issues/3126

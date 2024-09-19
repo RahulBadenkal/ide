@@ -12,7 +12,7 @@ import { NotFound } from './views/NotFound';
 
 // Make sure userId header is populated
 if (!getCookie('x-user-id')) {
-  setCookie('x-user-id', crypto.randomUUID())
+  setCookie('x-user-id', crypto.randomUUID(), 365 * 24 * 60 * 60 * 1000)
 }
 
 const root = document.getElementById('root')
@@ -21,7 +21,7 @@ render(() => (
     <Router root={Layout}>
         <Route path="/" component={Workspace}></Route>
         <Route path="/documents/:documentId" component={Workspace}></Route>
-        <Route path="/room/:roomId" component={Workspace}></Route>
+        <Route path="/rooms/:roomId" component={Workspace}></Route>
         <Route path="*paramName" component={NotFound} />
     </Router>
 ), root!)

@@ -58,4 +58,10 @@ Final decision
 - Use codemirror. If something doesn't exists build from scratch
 
 
-- Should I use websockets for all purposes since its already created? or should i use a mixture of http + sockets
+- Should I use websockets for all purposes since its already created? or should i use a mixture of http + sockets. For example updating user's name what approach should i follow?
+    1. Make api call in frontend to update user name and on success udate via socket (might face race conditions if 2 instance of the same user makes the same call)
+    2. Update via socket immediately and in background make http call to update. Good, but gives a false sense of security that things have synced
+    3. Make a socket call to update username, the socket listener will then make a db call to update and then on success send a success msg and also update the room state
+Following the 2 approach for now as seems more robust than approach 1 (but not as robust as approach 3) but is simpler than approach 3
+
+- How to know 

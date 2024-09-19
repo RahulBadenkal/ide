@@ -1,0 +1,1 @@
+ALTER TABLE "document" DROP COLUMN IF EXISTS "room_write_access";

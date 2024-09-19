@@ -1,0 +1,1 @@
+export { fromUint8Array as fromUint8ArrayToBase64, toUint8Array as fromBase64ToUint8Array } from 'js-base64'

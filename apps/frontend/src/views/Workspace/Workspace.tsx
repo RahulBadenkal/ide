@@ -1,10 +1,13 @@
-import { createSignal, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
-import { useParams } from "@solidjs/router";
-import { formUrl } from "@ide/ts-utils/src/lib/utils";
+import { useNavigate, useParams } from "@solidjs/router";
+import { formUrl, isNullOrUndefined } from "@ide/ts-utils/src/lib/utils";
 import { getCookie } from "@ide/browser-utils/src/lib/utils";
 import './Workspace.styles.scss'
+import { Awareness, Collaborator, Doc, Language, Role } from "@ide/shared/src/lib/types"
+import * as Y from "yjs"
+import { fromBase64ToUint8Array, fromUint8ArrayToBase64 } from "@ide/shared/src/lib/helpers"
 
 // import icon
 import CheckIcon from 'lucide-solid/icons/check';
@@ -19,6 +22,7 @@ import CircleUserRound from 'lucide-solid/icons/circle-user-round'
 import RunIcon from '@/assets/run/run.svg'
 import ReRunIcon from '@/assets/rerun/rerun.svg'
 import StopIcon from '@/assets/stop/stop.svg'
+import Loader2Icon from 'lucide-solid/icons/loader-2';
 
 // import components
 import PageLoader from "@/components/PageLoader/PageLoader";
@@ -45,31 +49,73 @@ import {
 } from "@/components/ui/combobox";
 
 // types
+type LanguageMetada = {id: Language, display: string, icon: string}
 
 // Constants
-const LANGUAGES: any[] = [
-  { id: 'python3.12', display: 'Python (v3.12)', icon: '' },
-  { id: 'js', display: 'JavaScript (Node v20)', icon: '' }
-]
+const LANGUAGE_METADATA: Map<Language, LanguageMetada> = new Map([
+  [Language.PYTHON_3_12, {id: Language.PYTHON_3_12, display: 'Python (v3.12)', icon: ''}],
+  [Language.JS_NODE_20, {id: Language.JS_NODE_20, display: 'JavaScript (Node v20)', icon: ''}]
+])
+const LANGUAGES: LanguageMetada[] = [
+  Language.PYTHON_3_12,
+  Language.JS_NODE_20
+].map((x) => LANGUAGE_METADATA.get(x))
 
 // Component
 export const Workspace = () => {
   // helpers
+  const sendMessage = (message: any) => {
+    if (socket && socket.readyState === socket.OPEN) {
+      // console.log('send message to server', message)
+      // console.log("\n")
+      socket.send(JSON.stringify(message))
+    }
+  }
+
   const handleIncomingMessage = (message: any) => {
-    console.log('incoming, message', message)
-    const {type, data} = message
+    // console.log('incoming, message', message)
+    const {type, data, docDelta, awarenessDelta} = message
+    
+    if (docDelta) {
+      Y.applyUpdate(yDoc, fromBase64ToUint8Array(docDelta))
+    }
+    if (awarenessDelta) {
+      Y.applyUpdate(yAwareness, fromBase64ToUint8Array(awarenessDelta))
+    }
 
     switch (type) {
       case "init": {
-        setPageLoadApiInfo({state: ApiState.LOADED})
         setUser(data.user)
-        setDocuments(data.documents)
-        setDocument(data.document)
+        setRole(data.role)
+        // TODO: Should just replace the local doc with remote doc? But would need to reinitialize the listeners
+        Y.applyUpdate(yDoc, fromBase64ToUint8Array(data.doc))
+        Y.applyUpdate(yAwareness, fromBase64ToUint8Array(data.awareness))
+        setPageUrl()
+        setPageLoadApiInfo({state: ApiState.LOADED})
+        console.log(doc())
+        break
+      }
+      case "toggleSharing": {
+        setPageUrl()
         break
       }
       case "error": {
         console.error(data)
       }
+    }
+  }
+
+  const setPageUrl = () => {
+    if (doc().sharing) {
+      if (doc().owner === user().id) {
+        window.history.replaceState({}, "", `/documents/${doc().id}`)
+      }
+      else {
+        window.history.replaceState({}, "", `/rooms/${doc().roomId}`)
+      }
+    }
+    else {
+      window.history.replaceState({}, "", `/documents/${doc().id}`)
     }
   }
 
@@ -80,7 +126,7 @@ export const Workspace = () => {
           as={(props: DropdownMenuSubTriggerProps) => (
             <Button variant="outline" {...props}>
               <div class="flex items-center gap-x-1">
-                <div>{activeLanguage().display}</div>
+                <div>{LANGUAGE_METADATA.get(doc().activeLanguage).display}</div>
                 <ChevronDownIcon size={16} />
               </div>
             </Button>
@@ -89,8 +135,8 @@ export const Workspace = () => {
         <DropdownMenuContent class="w-56">
           <For each={LANGUAGES}>
             {(item, index) =>
-              <DropdownMenuItem class="cursor-pointer" onClick={e => onLanguageChange(item)}>
-                <Show when={activeLanguage().id === item.id} fallback={<div class="w-[16px] mr-2"></div>}>
+              <DropdownMenuItem class="cursor-pointer" onClick={e => onLanguageChange(item.id)}>
+                <Show when={doc().activeLanguage === item.id} fallback={<div class="w-[16px] mr-2"></div>}>
                   <CheckIcon size={16} class="mr-2"></CheckIcon>
                 </Show>
                 <span>{item.display}</span>
@@ -101,80 +147,80 @@ export const Workspace = () => {
       </DropdownMenu>
     }
 
-    const _allWorkspacesJsx = () => {
-      return <DropdownMenu placement="bottom-start">
-        <DropdownMenuTrigger
-          as={(props: DropdownMenuSubTriggerProps) => (
-            <Button class="p-0 shrink-0" variant="link" {...props}>Workspaces</Button>
-          )}
-        />
-        <DropdownMenuContent class="p-3 grid gap-y-3 w-[400px]">
-          <div class="flex items-center justify-between">
-            <div class="font-medium">All Workspaces</div>
-            <div>
-            <SwitchUI class="flex items-center space-x-2">
-              <SwitchControl>
-                <SwitchThumb />
-              </SwitchControl>
-              <SwitchLabel class="text-sm font-medium leading-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-70">
-                Show only mine
-              </SwitchLabel>
-            </SwitchUI>
-              </div>
-          </div>
-          <div>
-            <TextFieldRoot class="w-full">
-              <TextField type="text" placeholder="Search by name/owner" />
-            </TextFieldRoot>
-          </div>
-          <div>
-            <For each={documents()}>
-              {(item, index) =>
-                <DropdownMenuItem closeOnSelect={false} class="cursor-pointer" onClick={e => onDocumentChange(item.id)}>
-                  <Show when={document().id === item.id} fallback={<div class="w-[16px] mr-2"></div>}>
-                    <CheckIcon size={16} class="mr-2"></CheckIcon>
-                  </Show>
-                  <div class="w-full flex items-center justify-between">
-                    <div>
-                      <div>{item.name}</div>
-                      <div class="text-xs">{item.owner}</div>
-                    </div>
-                    <div>
-                      <Show when={item.readOnly}>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <PencilOffIcon size={16} />
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>No write access</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </Show>
-                    </div>
-                  </div>
+    // const _allWorkspacesJsx = () => {
+    //   return <DropdownMenu placement="bottom-start">
+    //     <DropdownMenuTrigger
+    //       as={(props: DropdownMenuSubTriggerProps) => (
+    //         <Button class="p-0 shrink-0" variant="link" {...props}>Workspaces</Button>
+    //       )}
+    //     />
+    //     <DropdownMenuContent class="p-3 grid gap-y-3 w-[400px]">
+    //       <div class="flex items-center justify-between">
+    //         <div class="font-medium">All Workspaces</div>
+    //         <div>
+    //         <SwitchUI class="flex items-center space-x-2">
+    //           <SwitchControl>
+    //             <SwitchThumb />
+    //           </SwitchControl>
+    //           <SwitchLabel class="text-sm font-medium leading-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-70">
+    //             Show only mine
+    //           </SwitchLabel>
+    //         </SwitchUI>
+    //           </div>
+    //       </div>
+    //       <div>
+    //         <TextFieldRoot class="w-full">
+    //           <TextField type="text" placeholder="Search by name/owner" />
+    //         </TextFieldRoot>
+    //       </div>
+    //       <div>
+    //         <For each={documents()}>
+    //           {(item, index) =>
+    //             <DropdownMenuItem closeOnSelect={false} class="cursor-pointer" onClick={e => onDocumentChange(item.id)}>
+    //               <Show when={document().id === item.id} fallback={<div class="w-[16px] mr-2"></div>}>
+    //                 <CheckIcon size={16} class="mr-2"></CheckIcon>
+    //               </Show>
+    //               <div class="w-full flex items-center justify-between">
+    //                 <div>
+    //                   <div>{item.name}</div>
+    //                   <div class="text-xs">{item.owner}</div>
+    //                 </div>
+    //                 <div>
+    //                   <Show when={item.readOnly}>
+    //                     <Tooltip>
+    //                       <TooltipTrigger>
+    //                         <PencilOffIcon size={16} />
+    //                       </TooltipTrigger>
+    //                       <TooltipContent>
+    //                         <p>No write access</p>
+    //                       </TooltipContent>
+    //                     </Tooltip>
+    //                   </Show>
+    //                 </div>
+    //               </div>
   
-                </DropdownMenuItem>
-              }
-            </For>
-          </div>
+    //             </DropdownMenuItem>
+    //           }
+    //         </For>
+    //       </div>
   
-        </DropdownMenuContent>
-      </DropdownMenu>
-    }
+    //     </DropdownMenuContent>
+    //   </DropdownMenu>
+    // }
 
     const _shareJsx = () => {
       return <DropdownMenu placement="bottom-start">
         <DropdownMenuTrigger
           as={(props: DropdownMenuSubTriggerProps) => (
-            <Button variant="outline" {...props} class={isSharing() ? 'bg-primary/10 hover:bg-primary/5' : ''}>
+            <Button variant="outline" {...props} class={doc().sharing ? 'bg-primary/10 hover:bg-primary/5' : ''}>
               <div class="relative inline-block">
                 <div class="flex items-center gap-x-2">
                   <Share2Icon size="16" />
                   <div>Share</div>
                 </div>
-                <Show when={isSharing()}>
+                <Show when={doc().sharing}>
                   <div class="absolute -bottom-3 -right-5 rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold border-2 bg-primary text-primary-foreground">
-                    {collaborators().length}
+                    {totalCollaborators()}
                   </div>
                 </Show>
   
@@ -185,64 +231,76 @@ export const Workspace = () => {
         <DropdownMenuContent class="p-3 grid gap-y-3 w-[400px]">
           <div class="font-medium">Multiplayers</div>
           <div class="grid gap-y-3">
-            <div class="flex justify-between">
-              <div class="flex items-center gap-x-3">
-                <div><GlobeIcon size={24} /></div>
+            <Show when={isOwner()}>
+              <div class="flex justify-between">
+                <div class="flex items-center gap-x-3">
+                  <div><GlobeIcon size={24} /></div>
+                  <div>
+                    <div class="font-medium">Private join link</div>
+                    <div class="text-xs">Allow others access to this workspace</div>
+                  </div>
+                </div>
                 <div>
-                  <div class="font-medium">Private join link</div>
-                  <div class="text-xs">Allow others access to this workspace</div>
+                  <SwitchUI checked={doc().sharing} onChange={(e) => toggleSharing()}>
+                    <SwitchControl >
+                      <SwitchThumb />
+                    </SwitchControl>
+                  </SwitchUI>
                 </div>
               </div>
-              <div>
-                <SwitchUI checked={isSharing()} onChange={(e) => toggleSharing()}>
-                  <SwitchControl >
-                    <SwitchThumb />
-                  </SwitchControl>
-                </SwitchUI>
-              </div>
-            </div>
+            </Show>
+           
   
-            <Show when={isSharing()}>
-              <div>Hello</div>
+            <Show when={doc().sharing}>
               <div class="bg-primary/20 h-[1px] -ml-3 -mr-3"></div>
               <div>
                 <TextFieldRoot class="w-full">
                   <TextFieldLabel>Your name</TextFieldLabel>
-                  <TextField type="text" placeholder="Amazing you" />
+                  <div class="relative">
+                    <TextField type="text" placeholder="Amazing you" value={user().name} onInput={(e) => onUserNameChange((e.target as any).value)} />
+                    {/* <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                      <Loader2Icon class="h-4 w-4 animate-spin text-gray-400" />
+                    </div> */}
+                  </div>
                 </TextFieldRoot>
               </div>
   
-              <div class="flex items-center gap-x-2">
+              {/* <div class="flex items-center gap-x-2">
                 <div class="font-medium text-sm">Allow others to edit</div>
                 <SwitchUI class="mt-1" checked={readOnly()} onChange={(e) => toogleDocReadOnly()}>
                   <SwitchControl >
                     <SwitchThumb />
                   </SwitchControl>
                 </SwitchUI>
-              </div>
+              </div> */}
   
-              <div class="flex items-center gap-x-2">
+              {/* <div class="flex items-center gap-x-2">
                 <div class="font-medium text-sm">Sync run/debug sessions</div>
                 <SwitchUI class="mt-1" checked={syncRunSession()} onChange={(e) => setSyncRunSession(!syncRunSession())}>
                   <SwitchControl >
                     <SwitchThumb />
                   </SwitchControl>
                 </SwitchUI>
-              </div>
+              </div> */}
   
               <div class="flex items-center text-sm">
-                <div class="w-full p-2 rounded-tl-[6px] rounded-bl-[6px] bg-secondary">
-                  https://www.google.com
+                <div class="w-full rounded-tl-[6px] rounded-bl-[6px] bg-secondary">
+                <TextFieldRoot class="w-full">
+                  <TextField type="text" readOnly value={roomLink()} />
+                </TextFieldRoot>
                 </div>
-                <div class="shrink-0 flex items-center p-2 gap-x-2 bg-primary/20 rounded-tr-[6px] rounded-br-[6px]">
+                <div class={"shrink-0 flex items-center p-2 gap-x-2 bg-primary/20 rounded-tr-[6px] rounded-br-[6px] " + (!isRoomLinkCopied() ? 'cursor-pointer' : '')} onClick={() => !isRoomLinkCopied() && copyRoomLink()}>
                   <LinkIcon size={16} />
-                  <div>Copy join link</div>
+                  <div>{isRoomLinkCopied() ? 'Copied!' : 'Copy Link'}</div>
                 </div>
               </div>
-              <div class="flex items-center gap-x-1">
-                <div class="text-xs">Want to revoke access to this link?</div>
-                <a class="text-xs font-medium" href="https://www.google.com">Generate a new link</a>
-              </div>
+              <Show when={isOwner()}>
+                <div class="flex items-center gap-x-1">
+                  <div class="text-xs">Want to revoke access to this link?</div>
+                  <a class={"text-xs font-medium " + (!isNewRoomLinkGenerated() ? 'cursor-pointer' : '')} onClick={() => !isNewRoomLinkGenerated() && generateNewRoomLink()}>{isNewRoomLinkGenerated() ? 'New link generated!' : 'Generate a new link'}</a>
+                </div>
+              </Show>
+             
             </Show>
           </div>
         </DropdownMenuContent>
@@ -332,7 +390,7 @@ export const Workspace = () => {
       <div>
         <TextFieldRoot class="w-full">
           <TextFieldLabel>Your name</TextFieldLabel>
-          <TextField type="text" placeholder="Amazing you" />
+          <TextField type="text" placeholder="Amazing you" value={user().name} onInput={(e) => onUserNameChange((e.target as any).value)}/>
         </TextFieldRoot>
       </div>
     </DropdownMenuContent>
@@ -348,10 +406,10 @@ export const Workspace = () => {
         </div>
         <div class="w-full max-w-[250px]">
           <TextFieldRoot class="w-full">
-            <TextField type="text" placeholder="Type your doc name..." class="bg-background" />
+            <TextField type="text" placeholder="Type your doc name..." class="bg-background" value={doc().name} onInput={(e) => onDocNameUpdate(e.currentTarget.value)} />
           </TextFieldRoot>
         </div>
-        {_allWorkspacesJsx()}
+        {/* {_allWorkspacesJsx()} */}
       </div>
 
       {/* Language selection */}
@@ -360,20 +418,20 @@ export const Workspace = () => {
       </div>
 
       {/* Run icons */}
-      <div class="flex gap-4">
+      {/* <div class="flex gap-4"> */}
         {/* @ts-ignore */}
-        <RunIcon width="18" class="cursor-pointer" />
+        {/* <RunIcon width="18" class="cursor-pointer" /> */}
         {/* @ts-ignore */}
-        <ReRunIcon width="18" class="cursor-pointer" />
+        {/* <ReRunIcon width="18" class="cursor-pointer" /> */}
         {/* @ts-ignore */}
-        <StopIcon width="18" class="cursor-pointer" />
-      </div>
+        {/* <StopIcon width="18" class="cursor-pointer" /> */}
+      {/* </div> */}
 
       {/* Share & Settin`gs */}
       <div class="flex gap-x-4">
         {_shareJsx()}
-        {_layoutsJsx()}
-        {_settingsJsx()}
+        {/* {_layoutsJsx()} */}
+        {/* {_settingsJsx()} */}
         {_accountJsx()}
       </div>
     </div>
@@ -382,19 +440,35 @@ export const Workspace = () => {
 
   // variables
   const params = useParams()
+  const navigate = useNavigate();
   const socket = new WebSocket(formUrl({basePath: BACKEND_SOCKET_BASE_URL, otherPath: "api/workspace/room", params: {documentId: params.documentId, roomId: params.roomId, 'x-user-id': getCookie('x-user-id')}}))
   const [pageLoadApiInfo, setPageLoadApiInfo] = createSignal<ApiLoadInfo>({state: ApiState.LOADING})
   const [user, setUser] = createSignal<any>()
-  const [documents, setDocuments] = createSignal<any>()
+  const [role, setRole] = createSignal<Role>()
+  
+  let yDoc: Y.Doc = new Y.Doc();
+  let yAwareness: Y.Doc = new Y.Doc()
+  const [doc, setDoc] = createSignal<Doc>()
+  const [awareness, setAwareness] = createSignal<Awareness>()
+  window['doc'] = yDoc
+  window['awareness'] = yAwareness
+
+  const [isRoomLinkCopied, setIsRoomLinkCopied] = createSignal(false)
+  const [isNewRoomLinkGenerated, setIsNewLinkGenerated] = createSignal(false)
+
   const [collaborators, setCollaborators] = createSignal<any>();
   const [document, setDocument] = createSignal<any>()
-  const [activeLanguage, setActiveLanguage] = createSignal<any>(LANGUAGES.find((x) => x.id === 'python3.12'));
-  const [isSharing, setIsSharing] = createSignal<any>();
   const [roomId, setRoomId] = createSignal<any>();
   const [readOnly, setReadOnly] = createSignal<any>();
   const [syncRunSession, setSyncRunSession] = createSignal<any>();
 
   // computed variables
+  const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
+  const isOwner = createMemo(() => pageLoaded() ? doc().owner === user().id: false)
+  const totalCollaborators = createMemo(() => pageLoaded() ? Object.keys(awareness().collaborators).length : 0)
+  const roomLink = createMemo(() => pageLoaded() ? `${window.location.origin}/rooms/${doc().roomId}` : "")
+
+
 
   // events
   // socket events
@@ -415,22 +489,83 @@ export const Workspace = () => {
     console.error('WebSocket error', event);
   }
 
-  // toolbar events
-  const onDocumentChange = (docId: string) => {
+  // yjs events
+  yDoc.on("update", (update, _, __, tr) => {
+    console.log('update', tr.local, tr.origin)
+    const {type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    if (tr.local) {
+      // change made by current user, send to peers
+      const base64Update = fromUint8ArrayToBase64(update)
+      const message = {type, data, docDelta: base64Update}
+      sendMessage(message)
+    }
+    // update local doc
+    setDoc(yDoc.getMap().toJSON() as any)
+  })
 
+  yAwareness.on("update", (update, _, __, tr) => {
+    const {type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    if (tr.local) {
+      // change made by current user, send to peers
+      const base64Update = fromUint8ArrayToBase64(update)
+      const message = {type, data, awarenessDelta: base64Update}
+      sendMessage(message)
+    }
+    setAwareness(yAwareness.getMap().toJSON() as any)
+  })
+
+
+  // toolbar events
+  const onDocNameUpdate = (name: string) => {
+    yDoc.transact(() => {
+      yDoc.getMap().set('name', name)
+    }, {type: 'updateDocName'})
   }
 
-  const onLanguageChange = (newLanguage: any) => {
-   
+  const onLanguageChange = (language: Language) => {
+    yDoc.transact(() => {
+      yDoc.getMap().set("activeLanguage", language) 
+    }, {type: 'updateLanguage'})
   }
 
   const toggleSharing = () => {
-
+    yDoc.transact(() => {
+      let sharing = !doc().sharing
+      yDoc.getMap().set("sharing", sharing)
+      if (sharing && !doc().roomId) {
+        yDoc.getMap().set("roomId", crypto.randomUUID())
+      }
+    }, {type: 'toggleSharing'})
+    setPageUrl()
   }
 
-  const toogleDocReadOnly = () => {
-
+  const onUserNameChange = (name: string) => {
+    setUser({...user(), name: name});
+    yAwareness.transact(() => {
+      (yAwareness.getMap().get("collaborators") as Y.Map<any>).get(user().id).set("name", name)
+    }, {type: 'updateUserName'})
   }
+
+  const copyRoomLink = async () => {
+    try {
+      await navigator.clipboard.writeText(roomLink())
+      setIsRoomLinkCopied(true)
+      setTimeout(() => setIsRoomLinkCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy text')
+      console.error(error)
+    }
+  }
+
+  const generateNewRoomLink = () => {
+    yDoc.transact(() => {
+      yDoc.getMap().set("roomId", crypto.randomUUID())
+    }, {type: 'changeRoomLink'})
+    setIsNewLinkGenerated(true)
+    setTimeout(() => setIsNewLinkGenerated(false), 2000)
+    setPageUrl()
+  }
+
 
   // init
   // show loader, establish websocket connection, handle error
