@@ -55,11 +55,12 @@ import { Tab } from "./Tab";
 import { CodeEditor } from "@/components/CodeEditor/CodeEditor";
 import { Whiteboard, WhiteboardProps } from "@/components/Whiteboard/Whiteboard";
 import Split from 'split.js'
-import { HorizontalSplitPane, VerticalSplitPane } from "@/components/SplitPane/SplitPane";
+import { HorizontalSplitPane, SplitPane, VerticalSplitPane } from "@/components/SplitPane/SplitPane";
 
 
 // types
 type LanguageMetada = { id: Language, display: string, icon: string }
+type TabType = "whiteboard" | "code" | "console"
 
 // Constants
 const LANGUAGE_METADATA: Map<Language, LanguageMetada> = new Map([
@@ -70,6 +71,7 @@ const LANGUAGES: LanguageMetada[] = [
   Language.PYTHON_3_12,
   Language.JS_NODE_20
 ].map((x) => LANGUAGE_METADATA.get(x))
+const SPLITTER_MIN_SIZE = 36
 
 // Component
 export const Workspace = () => {
@@ -483,7 +485,7 @@ export const Workspace = () => {
       </div>
     </div>
   }
-  
+
   onMount(() => {
     // setTimeout(() => {
     //   Split(['#split-0', '#split-1'], {
@@ -498,48 +500,122 @@ export const Workspace = () => {
     //     snapOffset: 0,
     //   })
     // }, 1000)
-   
+
 
   })
 
-  const [x, setX] = createSignal([1, 2]) 
-  const [a, setA] = createSignal("text-red-600")
-  setInterval(() => {
-    const length = Math.max(2, Math.floor(Math.random() * 5))
-    console.log(length)
-    const arr = []
-    for (let i=0; i<length; i++) {
-      arr.push(i)
-    }
-    setX(arr)
-
-    if (a() === 'text-red-600') {
-      setA('text-green-600')
+  const toggleTabFullScreen = (tabType: TabType) => {
+    let fullScreen = false;
+    if (isNullOrUndefined(tabInFullScreen())) {
+      fullScreen = true;
+      setTabInFullScreen(tabType)
     }
     else {
-      setA('text-red-600')
+      fullScreen = false;
+      setTabInFullScreen(null)
     }
-  }, 10000)
+    if (fullScreen) {
+      enableFullScreen()
+    }
+    else {
+      disableFullScreen()
+    }
+  }
+
+  const enableFullScreen = () => {
+    const tabType = tabInFullScreen()
+
+    let targetSplitterId, tabIndex;
+    for (let splitterId of Object.keys(splitterTabs)) {
+      const tabs = splitterTabs[splitterId]
+      for (let [index, tab] of tabs.entries()) {
+        if (tab === tabType) {
+          tabIndex = index;
+          targetSplitterId = splitterId
+          break
+        }
+      }
+    }
+
+    // Hide all other splitters
+    for (let splitterId of Object.keys(splitters)) {
+      if (splitterId === targetSplitterId) {
+        continue
+      }
+      const splitter = splitters[splitterId]
+      splitter.hide()
+    }
+
+    // // Expand the corresponding tab in the target splitter
+    // const targetSplitter = splitters[targetSplitterId]
+    // targetSplitter.expandPane(tabIndex, true)
+  }
+
+  const disableFullScreen = () => {
+    for (let splitterId of Object.keys(splitters)) {
+      const splitter = splitters[splitterId]
+      splitter.recreate()
+    }
+  }
+
+  /*
+    Assign every SplitPane a id, say numbers
+    Fill splitters with a {[id]: {}} before creating the SplitPane in dom
+    Assign SplitPane ref to splitters[id]
+
+    Have a map that says which tab corresponds to which SplitPane
+  */
+  const splitters = {
+    "0": {}, "1": {},
+  };
+  const splitterHierarchy = {
+    type: "splitter",
+    splitterId: "0",
+    direction: "horizontal",
+    minSize: SPLITTER_MIN_SIZE,
+    hide: false,
+    sizes: [50, 50],
+    storedSizes: [50, 50],
+    elements: [
+      {type: "element", element: <div class="h-full w-full overflow-auto">whiteboard</div>},
+      {type: "splitter", splitterId: "1", direction: "vertical", minSize: SPLITTER_MIN_SIZE, hide: false, sizes: [50, 50], storedSizes: [50, 50], elements: [
+        {type: "element", element: <div class="h-full w-full overflow-auto">code</div>},
+        {type: "element", element: <div class="h-full w-full overflow-auto">console</div>},
+      ]}
+    ]
+  } as any
+
+  const recursive = (node) => {
+    return <SplitPane direction={node.direction} minSize={node.minSize} hide={node.hide} sizes={node.sizes}>
+      <For each={node.elements}> 
+      {(item, index) => {
+        return item.type === 'splitter' ? recursive(item) : item.element
+      }}
+      </For>
+    </SplitPane>
+  }
+
   const bodyJsx = () => {
-   return <div class='grow px-[10px] pb-[10px] overflow-auto flex flex-col gap-2'>
-      <HorizontalSplitPane minSize={36}>
-        <Tab direction="left" tabs={[{id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard'}]} activeTabId="whiteboard">
-          <Whiteboard yWhiteboard={yDoc.getMap().get("whiteboard") as WhiteboardProps["yWhiteboard"]} />
-        </Tab>
-        <VerticalSplitPane minSize={36}>
-          <Tab direction="up" tabs={[{id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code'}]} activeTabId="code">
-            <CodeEditor yCode={(yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)} />
+    return <div class='grow px-[10px] pb-[10px] overflow-auto flex flex-col gap-2'>
+      {recursive(splitterHierarchy)}
+      {/* <HorizontalSplitPane ref={splitters["0"]} minSize={SPLITTER_MIN_SIZE}>
+          <Tab direction="left" inFullScreenMode={tabInFullScreen() === 'whiteboard'} tabs={[{ id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard' }]} activeTabId="whiteboard" toggleFullScreenMode={() => toggleTabFullScreen("whiteboard")}>
+            <Whiteboard yWhiteboard={yDoc.getMap().get("whiteboard") as WhiteboardProps["yWhiteboard"]} />
           </Tab>
-          <Tab direction="up" tabs={[{id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console'}]} activeTabId="console" >
-            <div class="bg-white h-full">
-              Console
-            </div>
-          </Tab>
+        <VerticalSplitPane ref={splitters["1"]} minSize={SPLITTER_MIN_SIZE}>
+            <Tab direction="up" inFullScreenMode={tabInFullScreen() === 'code'} tabs={[{ id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code' }]} activeTabId="code" toggleFullScreenMode={() => toggleTabFullScreen("code")}>
+              <CodeEditor yCode={(yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)} />
+            </Tab>
+            <Tab direction="up" inFullScreenMode={tabInFullScreen() === 'console'} tabs={[{ id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console' }]} activeTabId="console" toggleFullScreenMode={() => toggleTabFullScreen("console")}>
+              <div class="bg-white h-full">
+                Console
+              </div>
+            </Tab>
         </VerticalSplitPane>
-      </HorizontalSplitPane>
+      </HorizontalSplitPane> */}
     </div>
-    
-      {/* <div class="flex h-[60%] gap-2">
+
+    {/* <div class="flex h-[60%] gap-2">
         <Tab tabs={[{id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code'}]} activeTabId="code" content={CodeEditor({yCode: (yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)})} />
         <Tab tabs={[{id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard'}]} activeTabId="whiteboard" content={Whiteboard({yWhiteboard: new Y.Array()})} />
       </div>
@@ -577,14 +653,16 @@ export const Workspace = () => {
   const [isRoomLinkCopied, setIsRoomLinkCopied] = createSignal(false)
   const [isNewRoomLinkGenerated, setIsNewLinkGenerated] = createSignal(false)
 
+  const [tabInFullScreen, setTabInFullScreen] = createSignal<TabType | null>()
+
   // computed variables
   const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
   const filteredDocuments = createMemo(() => documents()
     .filter((document) => !showMyDocuments() ? true : document.owner === user().id)
     .filter((document) => !workspacesSearchText() ? true : document.name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()) || document.owner_name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()))
-   
+
   )
-  
+
   const totalCollaborators = createMemo(() => pageLoaded() ? Object.keys(awareness().collaborators).length : 0)
   const roomLink = createMemo(() => pageLoaded() ? `${window.location.origin}/rooms/${doc().roomId}` : "")
 
@@ -711,6 +789,7 @@ export const Workspace = () => {
     setPageUrl()
   }
 
+  
 
   // init
   // show loader, establish websocket connection, handle error

@@ -1,40 +1,76 @@
-import { Component, children, JSX, createEffect, createMemo, onMount } from "solid-js";
+import { Component, children, JSX, createEffect, createMemo, onMount, createSignal } from "solid-js";
 import "./SplitPane.scss"
 import Split from "split.js";
 
 export type SplitPaneProps = {
   children: JSX.Element;
-  class?: string;
+  ref?: any;
   direction: Split.Options["direction"]
-  minSize?: Split.Options["maxSize"];
-  snapOffset?: Split.Options["snapOffset"]
-  dragInterval?: Split.Options["dragInterval"]
+  minSize: Split.Options["maxSize"];
+  hide: boolean;
+  sizes: number[];
 }
 
 export const SplitPane = (props: SplitPaneProps) => {
   const content = children(() => props.children);
   let split: Split.Instance
 
-  const recreate = () => {
+  const recreate = (hideOthers=false) => {
+    console.log('recreate')
     if (split) {
       split.destroy()
     }
+    setHideAll(false)
+
     split = Split(content() as any, {
       direction: props.direction,
-      minSize: props.minSize || 0,
-      snapOffset: props.snapOffset || 0,
-      dragInterval: props.dragInterval || 1,
+      minSize: hideOthers ? 0 : (props.minSize || 0),
+      snapOffset: 0,
+      dragInterval: 1,
+
+      gutterSize: hideOthers ? 0 : (props.minSize ? 10 : 0),
     })
   }
 
 
   createEffect(() => {
-    content()  // So that recreate triggers whenever content changes
+    // So that recreate triggers whenever content changes
+    content()
+    props.minSize
 
     recreate()
   })
 
-  return <div class={"split-container w-full h-full " + ('split-' + props.direction + " ")}>
+  // public apis
+  const expandPane = (index: number, hideOthers=false) => {
+    recreate(hideOthers)
+    for (let i=0; i<(content() as any) .length; i++) {
+      if (i !== index) {
+        split.collapse(i)
+      }
+    }
+  }
+
+
+  const collapsePane = (index: number) => {
+    split.collapse(index)
+  }
+  const [hideAll, setHideAll] = createSignal(false)
+
+  const hide = () => {
+    setHideAll(true)
+  }
+
+  const show = () => {
+    setHideAll(false)
+  }
+
+  onMount(() => {
+    props.ref?.({ recreate, expandPane, collapsePane, hide, show });
+  })
+
+
+  return <div class={"split-container w-full h-full " + ('split-' + props.direction + " ") + (hideAll() ? ' hidden' : '')}>
     {content()}
   </div>
 }

@@ -4,6 +4,7 @@ import "./Tab.scss"
 
 // icons
 import MaximizeIcon from 'lucide-solid/icons/maximize';
+import MinimizeIcon from 'lucide-solid/icons/minimize';
 import ChevronLeftIcon from 'lucide-solid/icons/chevron-left';
 import ChevronRightIcon from 'lucide-solid/icons/chevron-right';
 import ChevronUpIcon from 'lucide-solid/icons/chevron-up';
@@ -22,6 +23,10 @@ export type TabProps = {
   tabs: Tab[],
   activeTabId: string;
   direction?: "up" | "down" | "left" | "right"
+  inFullScreenMode?: boolean;
+
+  // events
+  toggleFullScreenMode?: () => void
 }
 
 export const Tab = (props: TabProps) => {
@@ -48,8 +53,10 @@ export const Tab = (props: TabProps) => {
         </For>
       </div>
       <div class="flex items-center gap-x-1 hover-icons flex-row group-[.oriented]:flex-col">
-        <div class="cursor-pointer flex items-center p-1 rounded hover:bg-gray-300">
-          <MaximizeIcon size={16} />
+        <div class="cursor-pointer flex items-center p-1 rounded hover:bg-gray-300" onClick={(e) => props.toggleFullScreenMode?.()}>
+          <Show when={props.inFullScreenMode} fallback={<MaximizeIcon size={16} />}>
+            <MinimizeIcon size={16} />
+          </Show>
         </div>
         <div class="cursor-pointer flex items-center p-1 rounded hover:bg-gray-300">
           <Switch>
