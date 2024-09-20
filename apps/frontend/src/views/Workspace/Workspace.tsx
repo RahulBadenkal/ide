@@ -53,7 +53,7 @@ import {
 } from "@/components/ui/combobox";
 import { Tab } from "./Tab";
 import { CodeEditor } from "@/components/CodeEditor/CodeEditor";
-import { Whiteboard } from "@/components/Whiteboard/Whiteboard";
+import { Whiteboard, WhiteboardProps } from "@/components/Whiteboard/Whiteboard";
 import Split from 'split.js'
 import { HorizontalSplitPane, VerticalSplitPane } from "@/components/SplitPane/SplitPane";
 
@@ -523,15 +523,19 @@ export const Workspace = () => {
   const bodyJsx = () => {
    return <div class='grow px-[10px] pb-[10px] overflow-auto flex flex-col gap-2'>
       <HorizontalSplitPane minSize={36}>
+        <Tab direction="left" tabs={[{id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard'}]} activeTabId="whiteboard">
+          <Whiteboard yWhiteboard={yDoc.getMap().get("whiteboard") as WhiteboardProps["yWhiteboard"]} />
+        </Tab>
         <VerticalSplitPane minSize={36}>
-          <Tab tabs={[{id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code'}]} activeTabId="code" content={CodeEditor({yCode: (yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)})} />
-          <Tab tabs={[{id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console'}]} activeTabId="console" content={
-            <div class="h-full">
+          <Tab direction="up" tabs={[{id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code'}]} activeTabId="code">
+            <CodeEditor yCode={(yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)} />
+          </Tab>
+          <Tab direction="up" tabs={[{id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console'}]} activeTabId="console" >
+            <div class="bg-white h-full">
               Console
             </div>
-          } />
+          </Tab>
         </VerticalSplitPane>
-        <Tab tabs={[{id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard'}]} activeTabId="whiteboard" content={Whiteboard({yWhiteboard: new Y.Array()})} />
       </HorizontalSplitPane>
     </div>
     

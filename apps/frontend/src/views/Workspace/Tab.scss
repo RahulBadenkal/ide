@@ -1,0 +1,7 @@
+.hover-icons {
+    visibility: hidden;
+}
+
+.tab-container:hover .hover-icons {
+    visibility: visible;
+}
