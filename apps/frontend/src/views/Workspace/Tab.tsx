@@ -19,6 +19,7 @@ export type Tab = {
 }
 
 export type TabProps = {
+  class?: string;
   children: JSX.Element,
   tabs: Tab[],
   activeTabId: string;
@@ -34,7 +35,7 @@ export const Tab = (props: TabProps) => {
   const size = createElementSize(target);
   const minSize = 36;
 
-  return <div ref={setTarget} class={(size.width <= minSize ? ' oriented ' : '') + "group tab-container w-full h-full flex flex-col overflow-hidden [&.oriented]:flex-row"} style="border: 1px solid gray; border-radius: 8px;">
+  return <div ref={setTarget} class={(size.width <= minSize ? ' oriented ' : '') + "group tab-container w-full h-full flex flex-col overflow-hidden [&.oriented]:flex-row" + ' ' + (props.class || '')} style="border: 1px solid gray; border-radius: 8px; box-sizing: border-box">
     <div class="flex items-center justify-between bg-gray-200 p-1 flex-row group-[.oriented]:flex-col" style="border-top-left-radius: 8px; border-top-right-radius: 8px;">
       <div>
         <For each={props.tabs}>

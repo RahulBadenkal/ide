@@ -1,13 +1,12 @@
-import { Component, children, JSX, createEffect, createMemo, onMount, createSignal } from "solid-js";
+import { children, JSX, createEffect } from "solid-js";
 import "./SplitPane.scss"
 import Split from "split.js";
 
 export type SplitPaneProps = {
   children: JSX.Element;
-  ref?: any;
   direction: Split.Options["direction"]
-  minSize: Split.Options["maxSize"];
-  hide: boolean;
+  minSize: Split.Options["minSize"];
+  gutterSize: number;
   sizes: number[];
 }
 
@@ -15,62 +14,36 @@ export const SplitPane = (props: SplitPaneProps) => {
   const content = children(() => props.children);
   let split: Split.Instance
 
-  const recreate = (hideOthers=false) => {
-    console.log('recreate')
+  const recreate = () => {
+    console.log("Recreating...")
     if (split) {
       split.destroy()
     }
-    setHideAll(false)
 
     split = Split(content() as any, {
       direction: props.direction,
-      minSize: hideOthers ? 0 : (props.minSize || 0),
+      minSize: props.minSize,
+      sizes: props.sizes,
+      gutterSize: props.gutterSize,
+
       snapOffset: 0,
       dragInterval: 1,
-
-      gutterSize: hideOthers ? 0 : (props.minSize ? 10 : 0),
     })
   }
 
 
   createEffect(() => {
-    // So that recreate triggers whenever content changes
+    // Props which when changed should trigger recreate
     content()
+    props.direction
     props.minSize
+    props.sizes
 
     recreate()
   })
 
-  // public apis
-  const expandPane = (index: number, hideOthers=false) => {
-    recreate(hideOthers)
-    for (let i=0; i<(content() as any) .length; i++) {
-      if (i !== index) {
-        split.collapse(i)
-      }
-    }
-  }
 
-
-  const collapsePane = (index: number) => {
-    split.collapse(index)
-  }
-  const [hideAll, setHideAll] = createSignal(false)
-
-  const hide = () => {
-    setHideAll(true)
-  }
-
-  const show = () => {
-    setHideAll(false)
-  }
-
-  onMount(() => {
-    props.ref?.({ recreate, expandPane, collapsePane, hide, show });
-  })
-
-
-  return <div class={"split-container w-full h-full " + ('split-' + props.direction + " ") + (hideAll() ? ' hidden' : '')}>
+  return <div class={"split-container w-full h-full " + ('split-' + props.direction + " ")}>
     {content()}
   </div>
 }
