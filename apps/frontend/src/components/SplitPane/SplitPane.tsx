@@ -19,7 +19,7 @@ export const SplitPane = (props: SplitPaneProps) => {
     if (split) {
       split.destroy()
     }
-
+    
     split = Split(content() as any, {
       direction: props.direction,
       minSize: props.minSize,

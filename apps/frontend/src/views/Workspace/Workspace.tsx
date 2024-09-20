@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
+import { children, createMemo, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
 import { useNavigate, useParams } from "@solidjs/router";
@@ -54,12 +54,25 @@ import {
 import { Tab } from "./Tab";
 import { CodeEditor } from "@/components/CodeEditor/CodeEditor";
 import { Whiteboard, WhiteboardProps } from "@/components/Whiteboard/Whiteboard";
-import { SplitPane } from "@/components/SplitPane/SplitPane";
+import { SplitPane, SplitPaneProps } from "@/components/SplitPane/SplitPane";
 
 
 // types
 type LanguageMetada = { id: Language, display: string, icon: string }
 type TabType = "whiteboard" | "code" | "console"
+
+type SplitNodeSplit = {
+  type: "splitter",
+  direction: SplitPaneProps["direction"],
+  sizes: number[],
+  storedSizes: number[];
+  children: SplitNode[]
+}
+type SplitNodeElement = {
+  type: "element",
+  elementId: TabType
+}
+type SplitNode = SplitNodeSplit | SplitNodeElement 
 
 // Constants
 const LANGUAGE_METADATA: Map<Language, LanguageMetada> = new Map([
@@ -486,7 +499,7 @@ export const Workspace = () => {
     </div>
   }
 
-  onMount(() => {})
+  onMount(() => { })
 
   const toggleTabFullScreen = (tabType: TabType) => {
     if (isNullOrUndefined(tabInFullScreen())) {
@@ -502,111 +515,103 @@ export const Workspace = () => {
   const enableFullScreen = () => {
     const tabType = tabInFullScreen()
 
-    if (tabType === "whiteboard") {
-      setSplitterHierarchy({
-        type: "splitter",
-        splitterId: "0",
-        direction: "horizontal",
-        minSize: 0,
-        gutterSize: 0,
-        sizes: [100, 0],
-        elements: [
-          { type: "element", elementId: "whiteboard" },
-          {
-            type: "splitter", splitterId: "1", direction: "vertical", minSize: SPLITTER_MIN_SIZE, gutterSize: SPLITTER_GUTTER_SIZE, sizes: [0, 0], elements: [
-              { type: "element", elementId: "code" },
-              { type: "element", elementId: "console" },
-            ]
-          }
-        ]
-      })
+    const _markAllEmpty = (node: SplitNode) => {
+      if (node.type === "element") return
+      node.storedSizes = node.sizes;  // Keep a copy of stored sizes
+      node.sizes = node.children.map((_) => 0)
+      for (let childNode of node.children) {
+        _markAllEmpty(childNode)
+      }
     }
-    else if (tabType === "code") {
-      setSplitterHierarchy({
-        type: "splitter",
-        splitterId: "0",
-        direction: "horizontal",
-        minSize: 0,
-        gutterSize: 0,
-        sizes: [0, 100],
-        elements: [
-          { type: "element", elementId: "whiteboard" },
-          {
-            type: "splitter", splitterId: "1", direction: "vertical", minSize: 0, gutterSize: 0, sizes: [100, 0], elements: [
-              { type: "element", elementId: "code" },
-              { type: "element", elementId: "console" },
-            ]
-          }
-        ]
-      })
+
+    const _recursive = (node: SplitNode) => {
+      if (node.type === "element") {
+        return node.elementId === tabType
+      }
+
+      // Keep a copy of sizes
+      node.storedSizes = node.sizes
+
+      // Update sizes for this node and all its children
+      let foundIndex = -1
+      for (let [index, childNode] of node.children.entries()) {
+        if (foundIndex >= 0) {
+          _markAllEmpty(childNode)
+        }
+        else {
+          foundIndex = _recursive(childNode) ? index : foundIndex
+        }
+      }
+
+      if (foundIndex >= 0) {
+        node.sizes = node.sizes.map((_, index) => index === foundIndex ? 100 : 0)
+        return true
+      }
+
+      return false
     }
-    else if (tabType === "console") {
-      setSplitterHierarchy({
-        type: "splitter",
-        splitterId: "0",
-        direction: "horizontal",
-        minSize: 0,
-        gutterSize: 0,
-        sizes: [0, 100],
-        elements: [
-          { type: "element", elementId: "whiteboard" },
-          {
-            type: "splitter", splitterId: "1", direction: "vertical", minSize: 0, gutterSize: 0, sizes: [0, 100], elements: [
-              { type: "element", elementId: "code" },
-              { type: "element", elementId: "console" },
-            ]
-          }
-        ]
-      })
-    }
+
+    let node = splitNodes()
+    _recursive(node)
+    node = { ...node }  // spread operator to trigger solid's reactivity
+    setSplitNodes(node)
   }
 
   const disableFullScreen = () => {
-    setSplitterHierarchy({
-      type: "splitter",
-      splitterId: "0",
-      direction: "horizontal",
-      minSize: SPLITTER_MIN_SIZE,
-      gutterSize: 10,
-      sizes: [50, 50],
-      elements: [
-        { type: "element", elementId: "whiteboard" },
-        {
-          type: "splitter", splitterId: "1", direction: "vertical", minSize: SPLITTER_MIN_SIZE, gutterSize: SPLITTER_GUTTER_SIZE, sizes: [50, 50], elements: [
-            { type: "element", elementId: "code" },
-            { type: "element", elementId: "console" },
-          ]
-        }
-      ]
-    })
+    const _restore = (node: SplitNode) => {
+      if (node.type === "element") return
+
+      node.sizes = node.storedSizes  // restore sizes
+
+      for (let childNode of node.children) {
+        _restore(childNode)
+      }
+    }
+
+    let node = splitNodes()
+    _restore(node)
+    node = { ...node }  // spread operator to trigger solid's reactivity
+    setSplitNodes(node)
   }
 
-  const recursiveLayout = (node) => {
-    return <SplitPane direction={node.direction} minSize={node.minSize} gutterSize={node.gutterSize} sizes={node.sizes}>
-      <For each={node.elements}>
-        {(item, index) => {
-          return item.type === 'splitter' ? recursiveLayout(item) : (
-            <Switch>
-              <Match when={item.elementId === "whiteboard"}>
-                {/* Need to add the hidden class else the tab border is visible even when width of the enclosing splitter is 0 */}
-                <Tab class={node.sizes[index()] === 0 ? 'hidden' : ''} direction="left" inFullScreenMode={tabInFullScreen() === 'whiteboard'} tabs={[{ id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard' }]} activeTabId="whiteboard" toggleFullScreenMode={() => toggleTabFullScreen("whiteboard")}>
-                  <Whiteboard yWhiteboard={yDoc.getMap().get("whiteboard") as WhiteboardProps["yWhiteboard"]} />
-                </Tab>
-              </Match>
-              <Match when={item.elementId === "code"}>
-                <Tab class={node.sizes[index()] === 0 ? 'hidden' : ''} direction="up" inFullScreenMode={tabInFullScreen() === 'code'} tabs={[{ id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code' }]} activeTabId="code" toggleFullScreenMode={() => toggleTabFullScreen("code")}>
-                  <CodeEditor yCode={(yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)} />
-                </Tab>
-              </Match>
-              <Match when={item.elementId === "console"}>
-                <Tab class={node.sizes[index()] === 0 ? 'hidden' : ''} direction="up" inFullScreenMode={tabInFullScreen() === 'console'} tabs={[{ id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console' }]} activeTabId="console" toggleFullScreenMode={() => toggleTabFullScreen("console")}>
-                  <div class="bg-white h-full">
-                    Console
-                  </div>
-                </Tab>
-              </Match>
-            </Switch>
-          )
+  const recursiveLayout = (node: SplitNodeSplit) => {
+    const props: Omit<SplitPaneProps, "children"> = {
+      direction: node.direction,
+      sizes: node.sizes,
+      ...(tabInFullScreen() ? {
+        minSize: 0, gutterSize: 0
+      } : {
+        minSize: SPLITTER_MIN_SIZE, gutterSize: SPLITTER_GUTTER_SIZE
+      })
+    }
+    return <SplitPane {...props} >
+      <For each={node.children}>
+        {(item: SplitNode, index) => {
+          if (item.type === "splitter") {
+            return recursiveLayout(item)
+          }
+
+          /* Need to add the hidden class else the tab border is visible even when width of the enclosing splitter is 0 */
+          const classes = node.sizes[index()] === 0 ? 'hidden' : ''
+          return <Switch>
+            <Match when={item.elementId === "whiteboard"}>
+              <Tab class={classes} direction="left" inFullScreenMode={tabInFullScreen() === 'whiteboard'} tabs={[{ id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard' }]} activeTabId="whiteboard" toggleFullScreenMode={() => toggleTabFullScreen("whiteboard")}>
+                <Whiteboard yWhiteboard={yDoc.getMap().get("whiteboard") as WhiteboardProps["yWhiteboard"]} />
+              </Tab>
+            </Match>
+            <Match when={item.elementId === "code"}>
+              <Tab class={classes} direction="up" inFullScreenMode={tabInFullScreen() === 'code'} tabs={[{ id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code' }]} activeTabId="code" toggleFullScreenMode={() => toggleTabFullScreen("code")}>
+                <CodeEditor yCode={(yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)} />
+              </Tab>
+            </Match>
+            <Match when={item.elementId === "console"}>
+              <Tab class={classes} direction="up" inFullScreenMode={tabInFullScreen() === 'console'} tabs={[{ id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console' }]} activeTabId="console" toggleFullScreenMode={() => toggleTabFullScreen("console")}>
+                <div class="bg-white h-full">
+                  Console
+                </div>
+              </Tab>
+            </Match>
+          </Switch>
         }}
       </For>
     </SplitPane>
@@ -614,7 +619,7 @@ export const Workspace = () => {
 
   const bodyJsx = () => {
     return <div class='grow px-[10px] pb-[10px] overflow-auto flex flex-col gap-2'>
-      {recursiveLayout(splitterHierarchy())}
+      {recursiveLayout(splitNodes())}
     </div>
   }
 
@@ -645,17 +650,15 @@ export const Workspace = () => {
   const [tabInFullScreen, setTabInFullScreen] = createSignal<TabType | null>()
 
 
-  const [splitterHierarchy, setSplitterHierarchy] = createSignal({
+  const [splitNodes, setSplitNodes] = createSignal<SplitNodeSplit>({
     type: "splitter",
-    splitterId: "0",
     direction: "horizontal",
-    minSize: SPLITTER_MIN_SIZE,
-    gutterSize: SPLITTER_GUTTER_SIZE,
     sizes: [50, 50],
-    elements: [
-      { type: "element", elementId: "whiteboard"},
+    storedSizes: [50, 50],
+    children: [
+      { type: "element", elementId: "whiteboard" },
       {
-        type: "splitter", splitterId: "1", direction: "vertical", minSize: SPLITTER_MIN_SIZE, gutterSize: SPLITTER_GUTTER_SIZE, sizes: [50, 50], elements: [
+        type: "splitter", direction: "vertical", sizes: [50, 50], storedSizes: [50, 50], children: [
           { type: "element", elementId: "code" },
           { type: "element", elementId: "console" },
         ]
@@ -664,160 +667,160 @@ export const Workspace = () => {
   }) as any
 
 
-// computed variables
-const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
-const filteredDocuments = createMemo(() => documents()
-  .filter((document) => !showMyDocuments() ? true : document.owner === user().id)
-  .filter((document) => !workspacesSearchText() ? true : document.name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()) || document.owner_name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()))
+  // computed variables
+  const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
+  const filteredDocuments = createMemo(() => documents()
+    .filter((document) => !showMyDocuments() ? true : document.owner === user().id)
+    .filter((document) => !workspacesSearchText() ? true : document.name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()) || document.owner_name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()))
 
-)
+  )
 
-const totalCollaborators = createMemo(() => pageLoaded() ? Object.keys(awareness().collaborators).length : 0)
-const roomLink = createMemo(() => pageLoaded() ? `${window.location.origin}/rooms/${doc().roomId}` : "")
+  const totalCollaborators = createMemo(() => pageLoaded() ? Object.keys(awareness().collaborators).length : 0)
+  const roomLink = createMemo(() => pageLoaded() ? `${window.location.origin}/rooms/${doc().roomId}` : "")
 
-// events
-// socket events
-socket.onopen = (event) => {
-  console.log('Connected to WebSocket server', event);
-  setSocketStatus("open")
-};
+  // events
+  // socket events
+  socket.onopen = (event) => {
+    console.log('Connected to WebSocket server', event);
+    setSocketStatus("open")
+  };
 
-socket.onmessage = (event) => {
-  const message = JSON.parse(event.data)
-  handleIncomingMessage(message)
-}
-
-socket.onclose = (event) => {
-  console.log('Disconnected from WebSocket server', event);
-  setSocketStatus("close")
-}
-
-socket.onerror = (event) => {
-  console.error('WebSocket error', event);
-}
-
-// yjs events
-yDoc.on("update", (update, _, __, tr) => {
-  console.log('update', tr.local, tr.origin)
-  const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
-  if (tr.local) {
-    // change made by current user, send to peers
-    const base64Update = fromUint8ArrayToBase64(update)
-    const message = { type, data, docDelta: base64Update }
-    sendMessage(message)
+  socket.onmessage = (event) => {
+    const message = JSON.parse(event.data)
+    handleIncomingMessage(message)
   }
-  // update local doc
-  setDoc(yDoc.getMap().toJSON() as any)
-})
 
-yAwareness.on("update", (update, _, __, tr) => {
-  const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
-  if (tr.local) {
-    // change made by current user, send to peers
-    const base64Update = fromUint8ArrayToBase64(update)
-    const message = { type, data, awarenessDelta: base64Update }
-    sendMessage(message)
+  socket.onclose = (event) => {
+    console.log('Disconnected from WebSocket server', event);
+    setSocketStatus("close")
   }
-  setAwareness(yAwareness.getMap().toJSON() as any)
-})
 
-
-// toolbar events
-const onDocNameUpdate = (name: string) => {
-  yDoc.transact(() => {
-    yDoc.getMap().set('name', name)
-  }, { type: 'updateDocName' })
-}
-
-const onDocumentChange = (document: any) => {
-  if (document.id == doc().id) {
-    return
+  socket.onerror = (event) => {
+    console.error('WebSocket error', event);
   }
-  window.location.href = `/documents/${document.id}`;
-}
 
-const onWorkspaceDropdownOpen = async () => {
-  if ([ApiState.LOADING, ApiState.LOADED].includes(documentsLoadInfo().state)) {
-    return
-  }
-  await loadWorkspaces()
-}
-
-const reloadWorkspaces = async () => {
-  if ([ApiState.LOADING].includes(documentsLoadInfo().state)) {
-    return
-  }
-  await loadWorkspaces()
-}
-
-const onLanguageChange = (language: Language) => {
-  yDoc.transact(() => {
-    yDoc.getMap().set("activeLanguage", language)
-    const languageCodeMap = yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>
-    if (!languageCodeMap.has(language)) {
-      languageCodeMap.set(language, new Y.Text(""))
+  // yjs events
+  yDoc.on("update", (update, _, __, tr) => {
+    console.log('update', tr.local, tr.origin)
+    const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    if (tr.local) {
+      // change made by current user, send to peers
+      const base64Update = fromUint8ArrayToBase64(update)
+      const message = { type, data, docDelta: base64Update }
+      sendMessage(message)
     }
-  }, { type: 'updateLanguage' })
-}
+    // update local doc
+    setDoc(yDoc.getMap().toJSON() as any)
+  })
 
-const toggleSharing = () => {
-  yDoc.transact(() => {
-    let sharing = !doc().sharing
-    yDoc.getMap().set("sharing", sharing)
-    if (sharing && !doc().roomId) {
+  yAwareness.on("update", (update, _, __, tr) => {
+    const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    if (tr.local) {
+      // change made by current user, send to peers
+      const base64Update = fromUint8ArrayToBase64(update)
+      const message = { type, data, awarenessDelta: base64Update }
+      sendMessage(message)
+    }
+    setAwareness(yAwareness.getMap().toJSON() as any)
+  })
+
+
+  // toolbar events
+  const onDocNameUpdate = (name: string) => {
+    yDoc.transact(() => {
+      yDoc.getMap().set('name', name)
+    }, { type: 'updateDocName' })
+  }
+
+  const onDocumentChange = (document: any) => {
+    if (document.id == doc().id) {
+      return
+    }
+    window.location.href = `/documents/${document.id}`;
+  }
+
+  const onWorkspaceDropdownOpen = async () => {
+    if ([ApiState.LOADING, ApiState.LOADED].includes(documentsLoadInfo().state)) {
+      return
+    }
+    await loadWorkspaces()
+  }
+
+  const reloadWorkspaces = async () => {
+    if ([ApiState.LOADING].includes(documentsLoadInfo().state)) {
+      return
+    }
+    await loadWorkspaces()
+  }
+
+  const onLanguageChange = (language: Language) => {
+    yDoc.transact(() => {
+      yDoc.getMap().set("activeLanguage", language)
+      const languageCodeMap = yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>
+      if (!languageCodeMap.has(language)) {
+        languageCodeMap.set(language, new Y.Text(""))
+      }
+    }, { type: 'updateLanguage' })
+  }
+
+  const toggleSharing = () => {
+    yDoc.transact(() => {
+      let sharing = !doc().sharing
+      yDoc.getMap().set("sharing", sharing)
+      if (sharing && !doc().roomId) {
+        yDoc.getMap().set("roomId", crypto.randomUUID())
+      }
+    }, { type: 'toggleSharing' })
+    setPageUrl()
+  }
+
+  const onUserNameChange = (name: string) => {
+    setUser({ ...user(), name: name });
+    yAwareness.transact(() => {
+      (yAwareness.getMap().get("collaborators") as Y.Map<any>).get(user().id).set("name", name)
+    }, { type: 'updateUserName' })
+  }
+
+  const copyRoomLink = async () => {
+    try {
+      await navigator.clipboard.writeText(roomLink())
+      setIsRoomLinkCopied(true)
+      setTimeout(() => setIsRoomLinkCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy text')
+      console.error(error)
+    }
+  }
+
+  const generateNewRoomLink = () => {
+    yDoc.transact(() => {
       yDoc.getMap().set("roomId", crypto.randomUUID())
-    }
-  }, { type: 'toggleSharing' })
-  setPageUrl()
-}
-
-const onUserNameChange = (name: string) => {
-  setUser({ ...user(), name: name });
-  yAwareness.transact(() => {
-    (yAwareness.getMap().get("collaborators") as Y.Map<any>).get(user().id).set("name", name)
-  }, { type: 'updateUserName' })
-}
-
-const copyRoomLink = async () => {
-  try {
-    await navigator.clipboard.writeText(roomLink())
-    setIsRoomLinkCopied(true)
-    setTimeout(() => setIsRoomLinkCopied(false), 2000)
-  } catch (error) {
-    console.error('Failed to copy text')
-    console.error(error)
+    }, { type: 'changeRoomLink' })
+    setIsNewLinkGenerated(true)
+    setTimeout(() => setIsNewLinkGenerated(false), 2000)
+    setPageUrl()
   }
-}
-
-const generateNewRoomLink = () => {
-  yDoc.transact(() => {
-    yDoc.getMap().set("roomId", crypto.randomUUID())
-  }, { type: 'changeRoomLink' })
-  setIsNewLinkGenerated(true)
-  setTimeout(() => setIsNewLinkGenerated(false), 2000)
-  setPageUrl()
-}
 
 
 
-// init
-// show loader, establish websocket connection, handle error
+  // init
+  // show loader, establish websocket connection, handle error
 
-// HTML
-return (
-  <Switch>
-    <Match when={pageLoadApiInfo().state === ApiState.LOADING}>
-      <PageLoader />
-    </Match>
-    <Match when={pageLoadApiInfo().state === ApiState.ERROR}>
-      <div class="text-red-600">{pageLoadApiInfo().error?.message}</div>
-    </Match>
-    <Match when={pageLoadApiInfo().state === ApiState.LOADED}>
-      <div class='h-full flex flex-col app-bg'>
-        {toolbarJsx()}
-        {bodyJsx()}
-      </div>
-    </Match>
-  </Switch>
-)
+  // HTML
+  return (
+    <Switch>
+      <Match when={pageLoadApiInfo().state === ApiState.LOADING}>
+        <PageLoader />
+      </Match>
+      <Match when={pageLoadApiInfo().state === ApiState.ERROR}>
+        <div class="text-red-600">{pageLoadApiInfo().error?.message}</div>
+      </Match>
+      <Match when={pageLoadApiInfo().state === ApiState.LOADED}>
+        <div class='h-full flex flex-col app-bg'>
+          {toolbarJsx()}
+          {bodyJsx()}
+        </div>
+      </Match>
+    </Switch>
+  )
 }
