@@ -7,17 +7,6 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// set env variables -> https://github.com/vitejs/vite/issues/562#issuecomment-754971271
-const viteEnv: any = {}
-Object.keys(process.env).forEach((key) => {
-  if (key.startsWith(`VITE_`)) {
-    viteEnv[`import.meta.env.${key}`] = process.env[key]
-  }
-})
-// For excalidraw
-viteEnv['process.env'] = {}
-console.log('viteEnv', viteEnv)
-
 export default defineConfig({
   plugins: [solid(), solidSvg({defaultAsComponent: true,})],
   server: {
@@ -28,7 +17,9 @@ export default defineConfig({
       "@": resolve(__dirname, "./src")
     }
   },
-  define: viteEnv,
+  define: {
+    'process.env': {}
+  },
   build: {
     sourcemap: true,
   }

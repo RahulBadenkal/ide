@@ -7,9 +7,6 @@ WORKDIR /app
 # Copy the application code
 COPY . .
 
-RUN echo "VITE_BACKEND_SOCKET_BASE_URL"
-RUN echo "$VITE_BACKEND_SOCKET_BASE_URL"
-
 # Install dependencies
 RUN npm install
 
