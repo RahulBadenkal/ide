@@ -1,5 +1,5 @@
 {
-  "id": "adc79246-1b97-4cb0-b38c-39209651a077",
+  "id": "40cf5311-88b5-4c6a-bda2-f46c64e4cda7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -41,8 +41,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "public.document_access": {
-      "name": "document_access",
+    "public.document_usage": {
+      "name": "document_usage",
       "schema": "",
       "columns": {
         "id": {
@@ -64,11 +64,18 @@
           "primaryKey": false,
           "notNull": true
         },
-        "room_id": {
-          "name": "room_id",
+        "last_known_room_id": {
+          "name": "last_known_room_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "last_opened_on": {
+          "name": "last_opened_on",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "NOW()"
         },
         "created_on": {
           "name": "created_on",
@@ -87,9 +94,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "document_access_user_id_app_user_id_fk": {
-          "name": "document_access_user_id_app_user_id_fk",
-          "tableFrom": "document_access",
+        "document_usage_user_id_app_user_id_fk": {
+          "name": "document_usage_user_id_app_user_id_fk",
+          "tableFrom": "document_usage",
           "tableTo": "app_user",
           "columnsFrom": [
             "user_id"
@@ -97,12 +104,12 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "document_access_document_id_document_id_fk": {
-          "name": "document_access_document_id_document_id_fk",
-          "tableFrom": "document_access",
+        "document_usage_document_id_document_id_fk": {
+          "name": "document_usage_document_id_document_id_fk",
+          "tableFrom": "document_usage",
           "tableTo": "document",
           "columnsFrom": [
             "document_id"
@@ -110,12 +117,21 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {
+        "unique_user_id_document_id": {
+          "name": "unique_user_id_document_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "document_id"
+          ]
+        }
+      }
     },
     "public.document": {
       "name": "document",
@@ -128,14 +144,20 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "name": {
+          "name": "name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
         "owner": {
           "name": "owner",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "is_sharing": {
-          "name": "is_sharing",
+        "sharing": {
+          "name": "sharing",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

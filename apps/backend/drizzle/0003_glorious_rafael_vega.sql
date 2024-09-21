@@ -1,1 +1,0 @@
-ALTER TABLE "document" ADD COLUMN "write" boolean NOT NULL;

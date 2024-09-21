@@ -1,1 +1,0 @@
-ALTER TABLE "document" RENAME COLUMN "write" TO "read_access";

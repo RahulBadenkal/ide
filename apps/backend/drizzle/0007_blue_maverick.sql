@@ -1,1 +1,0 @@
-ALTER TABLE "document" RENAME COLUMN "room_access" TO "room_write_access";

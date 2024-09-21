@@ -1,1 +1,0 @@
-ALTER TABLE "document_usage" ADD COLUMN "last_opened_on" timestamp with time zone DEFAULT NOW() NOT NULL;

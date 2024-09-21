@@ -1,1 +1,0 @@
-ALTER TABLE "document_usage" ADD COLUMN "last_known_room_id" uuid;
