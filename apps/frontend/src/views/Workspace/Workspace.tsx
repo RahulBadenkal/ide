@@ -713,9 +713,12 @@ export const Workspace = () => {
   // computed variables
   const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
   const filteredDocuments = createMemo(() => documents()
+    .map((document) => document.id === doc().id ? 
+      {...document, name: doc().name, owner_name: awareness().collaborators[Object.keys(awareness().collaborators).find((x) => x === document.owner)]?.name || document.owner_name}
+      : document
+    )
     .filter((document) => !showMyDocuments() ? true : document.owner === user().id)
     .filter((document) => !workspacesSearchText() ? true : document.name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()) || document.owner_name.toLocaleLowerCase().includes(workspacesSearchText().toLocaleLowerCase()))
-
   )
 
   const totalCollaborators = createMemo(() => pageLoaded() ? Object.keys(awareness().collaborators).length : 0)
