@@ -16,6 +16,7 @@ Object.keys(process.env).forEach((key) => {
 })
 // For excalidraw
 viteEnv['process.env'] = {}
+console.log('viteEnv', viteEnv)
 
 export default defineConfig({
   plugins: [solid(), solidSvg({defaultAsComponent: true,})],
