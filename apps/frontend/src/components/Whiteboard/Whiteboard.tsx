@@ -22,6 +22,7 @@ const getSceneVersion = (elements: readonly ExcalidrawElement[]) => {
   return elements.reduce((acc, x) => acc + x.version, 0)
 }
 
+// TODO: Add support when a new instance of y.Array is passed
 export const Whiteboard: Component<WhiteboardProps> = (props) => {
   const componentId = crypto.randomUUID()
 

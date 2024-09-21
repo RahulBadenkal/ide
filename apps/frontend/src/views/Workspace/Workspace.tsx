@@ -109,26 +109,12 @@ export const Workspace = () => {
 
     switch (type) {
       case "init": {
-        // clean up old listeners on docs
-        closeYjsEvents()
-          
-        batch(() => {
-          setUser(data.user)
-          setRole(data.role)
+        setUser(data.user)
+        setRole(data.role)
 
-          // setup new doc (no offline support for now)
-          const [_doc, _awareness] = [new Y.Doc(), new Y.Doc()]
-          Y.applyUpdate(_doc, fromBase64ToUint8Array(data.doc))
-          Y.applyUpdate(_awareness, fromBase64ToUint8Array(data.awareness))
-          setYDoc(_doc)
-          setYAwareness(_awareness)
-          setDoc(_doc.getMap().toJSON() as any)
-          setAwareness(_awareness.getMap().toJSON() as any)
-        })
+        Y.applyUpdate(yDoc(), fromBase64ToUint8Array(data.doc))
+        Y.applyUpdate(yAwareness(), fromBase64ToUint8Array(data.awareness))
 
-        // add new listeners 
-        setupYjsEvents()
-        
         // set other ui info
         setPageUrl()
         setPageLoadApiInfo({ state: ApiState.LOADED })
@@ -147,6 +133,36 @@ export const Workspace = () => {
     }
   }
 
+  // yjs events
+  const onYjsDocUpdate = (update, _, __, tr) => {
+    console.log('update', tr.local, tr.origin)
+    const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    if (tr.local) {
+      // change made by current user, send to peers
+      const base64Update = fromUint8ArrayToBase64(update)
+      const message = { type, data, docDelta: base64Update }
+      sendMessage(message)
+    }
+    // update local doc
+    setDoc(yDoc().getMap().toJSON() as any)
+  }
+
+  const onYjsAwarenessUpdate = (update, _, __, tr) => {
+    const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    if (tr.local) {
+      // change made by current user, send to peers
+      const base64Update = fromUint8ArrayToBase64(update)
+      const message = { type, data, awarenessDelta: base64Update }
+      sendMessage(message)
+    }
+    setAwareness(yAwareness().getMap().toJSON() as any)
+  }
+
+  const setupYjsEvents = () => {
+    yDoc().on("update", onYjsDocUpdate)
+    yAwareness().on("update", onYjsAwarenessUpdate)
+  }
+  
   const setPageUrl = () => {
     // using window.history as i want to silently change the route without solid reloading the component
     if (doc().sharing) {
@@ -629,10 +645,11 @@ export const Workspace = () => {
   }
 
   // variables
-  const [yDoc, setYDoc] = createSignal<Y.Doc>()
-  const [yAwareness, setYAwareness] = createSignal<Y.Doc>()
+  const [yDoc, setYDoc] = createSignal<Y.Doc>(new Y.Doc())
+  const [yAwareness, setYAwareness] = createSignal<Y.Doc>(new Y.Doc())
   const [doc, setDoc] = createSignal<Doc>()
   const [awareness, setAwareness] = createSignal<Awareness>()
+  setupYjsEvents()
   window['doc'] = yDoc()
   window['awareness'] = yAwareness()
 
@@ -663,7 +680,7 @@ export const Workspace = () => {
   const codeTab = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
     <Tab class={!tabInFullScreen() || tabInFullScreen() === 'code' ? '': 'hidden'} direction="up" inFullScreenMode={tabInFullScreen() === 'code'} tabs={[{ id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code' }]} activeTabId="code" toggleFullScreenMode={() => toggleTabFullScreen("code")}>
       <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
-        <CodeEditor yCode={yDoc() ? ((yDoc().getMap().get("languageCodeMap")) as Y.Map<Y.Text>).get(doc().activeLanguage): new Y.Doc().getText()} />
+        <CodeEditor yCode={((yDoc().getMap().get("languageCodeMap")) as Y.Map<Y.Text>).get(doc().activeLanguage)} />
       </Show>
     </Tab>
   </Show>
@@ -723,36 +740,6 @@ export const Workspace = () => {
 
   socket.onerror = (event) => {
     console.error('WebSocket error', event);
-  }
-
-  // yjs events
-  const onYjsDocUpdate = (update, _, __, tr) => {
-    console.log('update', tr.local, tr.origin)
-    const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
-    if (tr.local) {
-      // change made by current user, send to peers
-      const base64Update = fromUint8ArrayToBase64(update)
-      const message = { type, data, docDelta: base64Update }
-      sendMessage(message)
-    }
-    // update local doc
-    setDoc(yDoc().getMap().toJSON() as any)
-  }
-
-  const onYjsAwarenessUpdate = (update, _, __, tr) => {
-    const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
-    if (tr.local) {
-      // change made by current user, send to peers
-      const base64Update = fromUint8ArrayToBase64(update)
-      const message = { type, data, awarenessDelta: base64Update }
-      sendMessage(message)
-    }
-    setAwareness(yAwareness().getMap().toJSON() as any)
-  }
-
-  const setupYjsEvents = () => {
-    yDoc().on("update", onYjsDocUpdate)
-    yAwareness().on("update", onYjsAwarenessUpdate)
   }
 
   const closeYjsEvents = () => {

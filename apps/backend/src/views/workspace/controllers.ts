@@ -199,8 +199,8 @@ const addNewRoom = (document) => {
   const {doc, awareness, userIdSocketMap} = room
 
   doc.on("update", (update, _, __, tr) => {
-    console.log('onDocUpdate', tr.local, tr.origin) //, docToJson(doc))
     const {author = null, type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
+    console.log('onDocUpdate', tr.local, author, type)  // , tr.origin, docToJson(doc))
 
     const collaborators = awarenessToJson(awareness).collaborators
     for (let collaboratorId of Object.keys(collaborators)) {

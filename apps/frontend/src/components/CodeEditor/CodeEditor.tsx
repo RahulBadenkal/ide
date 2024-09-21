@@ -16,6 +16,7 @@ export type CodeEditorProps = {
   awareness?: Awareness,
 }
 
+// TODO: Add support when a new instance of y.Text is passed
 export const CodeEditor = (props: CodeEditorProps) => {
   const [editorRef, setEditorRef] = createSignal<HTMLElement>();
 
