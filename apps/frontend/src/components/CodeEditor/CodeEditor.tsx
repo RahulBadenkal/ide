@@ -49,8 +49,6 @@ export const CodeEditor = (props: CodeEditorProps) => {
       state: startState,
       parent: editorRef(),
     });
-
-  
   });
 
   return (

@@ -1,4 +1,4 @@
-import { children, createMemo, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
+import { batch, createMemo, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
 import { useNavigate, useParams } from "@solidjs/router";
@@ -98,23 +98,38 @@ export const Workspace = () => {
   }
 
   const handleIncomingMessage = (message: any) => {
-    // console.log('incoming, message', message)
     const { type, data, docDelta, awarenessDelta } = message
 
     if (docDelta) {
-      Y.applyUpdate(yDoc, fromBase64ToUint8Array(docDelta))
+      Y.applyUpdate(yDoc(), fromBase64ToUint8Array(docDelta))
     }
     if (awarenessDelta) {
-      Y.applyUpdate(yAwareness, fromBase64ToUint8Array(awarenessDelta))
+      Y.applyUpdate(yAwareness(), fromBase64ToUint8Array(awarenessDelta))
     }
 
     switch (type) {
       case "init": {
-        setUser(data.user)
-        setRole(data.role)
-        // TODO: Should just replace the local doc with remote doc? But would need to reinitialize the listeners
-        Y.applyUpdate(yDoc, fromBase64ToUint8Array(data.doc))
-        Y.applyUpdate(yAwareness, fromBase64ToUint8Array(data.awareness))
+        // clean up old listeners on docs
+        closeYjsEvents()
+          
+        batch(() => {
+          setUser(data.user)
+          setRole(data.role)
+
+          // setup new doc (no offline support for now)
+          const [_doc, _awareness] = [new Y.Doc(), new Y.Doc()]
+          Y.applyUpdate(_doc, fromBase64ToUint8Array(data.doc))
+          Y.applyUpdate(_awareness, fromBase64ToUint8Array(data.awareness))
+          setYDoc(_doc)
+          setYAwareness(_awareness)
+          setDoc(_doc.getMap().toJSON() as any)
+          setAwareness(_awareness.getMap().toJSON() as any)
+        })
+
+        // add new listeners 
+        setupYjsEvents()
+        
+        // set other ui info
         setPageUrl()
         setPageLoadApiInfo({ state: ApiState.LOADED })
         console.log(doc())
@@ -591,25 +606,15 @@ export const Workspace = () => {
             return recursiveLayout(item)
           }
 
-          /* Need to add the hidden class else the tab border is visible even when width of the enclosing splitter is 0 */
-          const classes = node.sizes[index()] === 0 ? 'hidden' : ''
           return <Switch>
             <Match when={item.elementId === "whiteboard"}>
-              <Tab class={classes} direction="left" inFullScreenMode={tabInFullScreen() === 'whiteboard'} tabs={[{ id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard' }]} activeTabId="whiteboard" toggleFullScreenMode={() => toggleTabFullScreen("whiteboard")}>
-                <Whiteboard yWhiteboard={yDoc.getMap().get("whiteboard") as WhiteboardProps["yWhiteboard"]} />
-              </Tab>
+              {whiteboardTab}
             </Match>
             <Match when={item.elementId === "code"}>
-              <Tab class={classes} direction="up" inFullScreenMode={tabInFullScreen() === 'code'} tabs={[{ id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code' }]} activeTabId="code" toggleFullScreenMode={() => toggleTabFullScreen("code")}>
-                <CodeEditor yCode={(yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>).get(doc().activeLanguage)} />
-              </Tab>
+              {codeTab}
             </Match>
             <Match when={item.elementId === "console"}>
-              <Tab class={classes} direction="up" inFullScreenMode={tabInFullScreen() === 'console'} tabs={[{ id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console' }]} activeTabId="console" toggleFullScreenMode={() => toggleTabFullScreen("console")}>
-                <div class="bg-white h-full">
-                  Console
-                </div>
-              </Tab>
+              {consoleTab}
             </Match>
           </Switch>
         }}
@@ -624,12 +629,12 @@ export const Workspace = () => {
   }
 
   // variables
-  let yDoc: Y.Doc = new Y.Doc();
-  let yAwareness: Y.Doc = new Y.Doc()
+  const [yDoc, setYDoc] = createSignal<Y.Doc>()
+  const [yAwareness, setYAwareness] = createSignal<Y.Doc>()
   const [doc, setDoc] = createSignal<Doc>()
   const [awareness, setAwareness] = createSignal<Awareness>()
-  window['doc'] = yDoc
-  window['awareness'] = yAwareness
+  window['doc'] = yDoc()
+  window['awareness'] = yAwareness()
 
   const params = useParams()
   const navigate = useNavigate();
@@ -649,6 +654,27 @@ export const Workspace = () => {
 
   const [tabInFullScreen, setTabInFullScreen] = createSignal<TabType | null>()
 
+  const whiteboardTab = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
+    <Tab class={!tabInFullScreen() || tabInFullScreen() === 'whiteboard' ? '': 'hidden'} direction="left" inFullScreenMode={tabInFullScreen() === 'whiteboard'} tabs={[{ id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard' }]} activeTabId="whiteboard" toggleFullScreenMode={() => toggleTabFullScreen("whiteboard")}>  
+      <Whiteboard yWhiteboard={(yDoc().getMap().get("whiteboard")) as WhiteboardProps["yWhiteboard"]} />
+    </Tab>
+  </Show>  
+
+  const codeTab = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
+    <Tab class={!tabInFullScreen() || tabInFullScreen() === 'code' ? '': 'hidden'} direction="up" inFullScreenMode={tabInFullScreen() === 'code'} tabs={[{ id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code' }]} activeTabId="code" toggleFullScreenMode={() => toggleTabFullScreen("code")}>
+      <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
+        <CodeEditor yCode={yDoc() ? ((yDoc().getMap().get("languageCodeMap")) as Y.Map<Y.Text>).get(doc().activeLanguage): new Y.Doc().getText()} />
+      </Show>
+    </Tab>
+  </Show>
+
+  const consoleTab = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
+    <Tab class={!tabInFullScreen() || tabInFullScreen() === 'console' ? '': 'hidden'} direction="up" inFullScreenMode={tabInFullScreen() === 'console'} tabs={[{ id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console' }]} activeTabId="console" toggleFullScreenMode={() => toggleTabFullScreen("console")}>
+      <div class="bg-white h-full">
+        Console
+      </div>
+    </Tab>
+  </Show> 
 
   const [splitNodes, setSplitNodes] = createSignal<SplitNodeSplit>({
     type: "splitter",
@@ -664,7 +690,7 @@ export const Workspace = () => {
         ]
       }
     ]
-  }) as any
+  })
 
 
   // computed variables
@@ -700,7 +726,7 @@ export const Workspace = () => {
   }
 
   // yjs events
-  yDoc.on("update", (update, _, __, tr) => {
+  const onYjsDocUpdate = (update, _, __, tr) => {
     console.log('update', tr.local, tr.origin)
     const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
     if (tr.local) {
@@ -710,10 +736,10 @@ export const Workspace = () => {
       sendMessage(message)
     }
     // update local doc
-    setDoc(yDoc.getMap().toJSON() as any)
-  })
+    setDoc(yDoc().getMap().toJSON() as any)
+  }
 
-  yAwareness.on("update", (update, _, __, tr) => {
+  const onYjsAwarenessUpdate = (update, _, __, tr) => {
     const { type = null, ...data } = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
     if (tr.local) {
       // change made by current user, send to peers
@@ -721,14 +747,27 @@ export const Workspace = () => {
       const message = { type, data, awarenessDelta: base64Update }
       sendMessage(message)
     }
-    setAwareness(yAwareness.getMap().toJSON() as any)
-  })
+    setAwareness(yAwareness().getMap().toJSON() as any)
+  }
 
+  const setupYjsEvents = () => {
+    yDoc().on("update", onYjsDocUpdate)
+    yAwareness().on("update", onYjsAwarenessUpdate)
+  }
+
+  const closeYjsEvents = () => {
+    if (yDoc()) {
+      yDoc().destroy()
+    }
+    if (yAwareness()) {
+      yAwareness().destroy()
+    }
+  }
 
   // toolbar events
   const onDocNameUpdate = (name: string) => {
-    yDoc.transact(() => {
-      yDoc.getMap().set('name', name)
+    yDoc().transact(() => {
+      yDoc().getMap().set('name', name)
     }, { type: 'updateDocName' })
   }
 
@@ -754,9 +793,9 @@ export const Workspace = () => {
   }
 
   const onLanguageChange = (language: Language) => {
-    yDoc.transact(() => {
-      yDoc.getMap().set("activeLanguage", language)
-      const languageCodeMap = yDoc.getMap().get("languageCodeMap") as Y.Map<Y.Text>
+    yDoc().transact(() => {
+      yDoc().getMap().set("activeLanguage", language)
+      const languageCodeMap = yDoc().getMap().get("languageCodeMap") as Y.Map<Y.Text>
       if (!languageCodeMap.has(language)) {
         languageCodeMap.set(language, new Y.Text(""))
       }
@@ -764,11 +803,11 @@ export const Workspace = () => {
   }
 
   const toggleSharing = () => {
-    yDoc.transact(() => {
+    yDoc().transact(() => {
       let sharing = !doc().sharing
-      yDoc.getMap().set("sharing", sharing)
+      yDoc().getMap().set("sharing", sharing)
       if (sharing && !doc().roomId) {
-        yDoc.getMap().set("roomId", crypto.randomUUID())
+        yDoc().getMap().set("roomId", crypto.randomUUID())
       }
     }, { type: 'toggleSharing' })
     setPageUrl()
@@ -776,8 +815,8 @@ export const Workspace = () => {
 
   const onUserNameChange = (name: string) => {
     setUser({ ...user(), name: name });
-    yAwareness.transact(() => {
-      (yAwareness.getMap().get("collaborators") as Y.Map<any>).get(user().id).set("name", name)
+    yAwareness().transact(() => {
+      (yAwareness().getMap().get("collaborators") as Y.Map<any>).get(user().id).set("name", name)
     }, { type: 'updateUserName' })
   }
 
@@ -793,8 +832,8 @@ export const Workspace = () => {
   }
 
   const generateNewRoomLink = () => {
-    yDoc.transact(() => {
-      yDoc.getMap().set("roomId", crypto.randomUUID())
+    yDoc().transact(() => {
+      yDoc().getMap().set("roomId", crypto.randomUUID())
     }, { type: 'changeRoomLink' })
     setIsNewLinkGenerated(true)
     setTimeout(() => setIsNewLinkGenerated(false), 2000)

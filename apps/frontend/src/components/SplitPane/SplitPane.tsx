@@ -15,7 +15,7 @@ export const SplitPane = (props: SplitPaneProps) => {
   let split: Split.Instance
 
   const recreate = () => {
-    console.log("Recreating...")
+    // console.log("Recreating...", crypto.randomUUID().slice(0, 6))
     if (split) {
       split.destroy()
     }
@@ -33,16 +33,10 @@ export const SplitPane = (props: SplitPaneProps) => {
 
 
   createEffect(() => {
-    // Props which when changed should trigger recreate
-    content()
-    props.direction
-    props.minSize
-    props.sizes
-
     recreate()
   })
 
-
+  // console.log('Heyo', crypto.randomUUID().slice(0, 6))
   return <div class={"split-container w-full h-full " + ('split-' + props.direction + " ")}>
     {content()}
   </div>
