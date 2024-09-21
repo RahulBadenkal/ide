@@ -20,4 +20,7 @@ export default defineConfig({
   define: {
     'process.env': {}  // For excalidraw to work
   },
+  build: {
+    sourcemap: true,
+  }
 })
