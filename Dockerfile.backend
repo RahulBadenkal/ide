@@ -4,16 +4,13 @@ FROM node:alpine
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available)
-COPY package*.json ./
-
 # Copy application code
 COPY . .
 
 # Install app dependencies
 RUN npm install
 
-# Build the project
+# Build the application
 RUN npm run build --workspace=@ide/backend
 
 # Expose the port the app runs on

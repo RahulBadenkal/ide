@@ -17,11 +17,11 @@ export class HttpError extends Error {
   }
 }
 
-export class SocketError extends HttpError {
+export class SocketError extends Error {
   payload: SocketErrorPayload
 
   constructor(payload: Omit<SocketErrorPayload, "wsStatus"> & {wsStatus?: number}) {
-    super(payload)
+    super(payload.message)
     if (!payload.wsStatus) {
       this.payload = {
         wsStatus: httpErrorCodeToWsErrorCode(payload.status),

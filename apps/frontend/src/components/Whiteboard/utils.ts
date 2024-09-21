@@ -16,7 +16,7 @@ export const getSortedArray = (array: YMap<ExcalidrawElement | string>[], inPlac
     })
 }
 
-export const yjsToExcalidraw = (yArray: WhiteboardProps["yArray"]): ExcalidrawElement[] => {
+export const yjsToExcalidraw = (yArray: WhiteboardProps["yWhiteboard"]): ExcalidrawElement[] => {
   let x = getSortedArray(yArray.toArray())
     .map((x) => (x.get("el") as ExcalidrawElement))
   return x
