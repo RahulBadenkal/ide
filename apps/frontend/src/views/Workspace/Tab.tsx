@@ -28,6 +28,7 @@ export type TabProps = {
 
   // events
   toggleFullScreenMode?: () => void
+  toggleExpandCollapse?: () => void
 }
 
 export const Tab = (props: TabProps) => {
@@ -59,7 +60,7 @@ export const Tab = (props: TabProps) => {
             <MinimizeIcon size={16} />
           </Show>
         </div>
-        <div class="cursor-pointer flex items-center p-1 rounded hover:bg-gray-300">
+        <div class="cursor-not-allowed flex items-center p-1 rounded hover:bg-gray-300" onClick={() => props.toggleExpandCollapse?.()}>
           <Switch>
             <Match when={props.direction === "up"}>
               <ChevronUpIcon size={16} />

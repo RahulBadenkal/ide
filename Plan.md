@@ -64,4 +64,5 @@ Final decision
     3. Make a socket call to update username, the socket listener will then make a db call to update and then on success send a success msg and also update the room state
 Following the 2 approach for now as seems more robust than approach 1 (but not as robust as approach 3) but is simpler than approach 3
 
-- How to know 
+- How to make sure yjs state is always pristine?
+https://discuss.yjs.dev/t/how-to-label-a-transaction-and-add-event-metadata/2876/4?u=rahulbadenkal

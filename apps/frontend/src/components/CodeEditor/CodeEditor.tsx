@@ -10,19 +10,29 @@ import {Awareness} from 'y-protocols/awareness.js'
 
 
 import './CodeEditor.styles.scss'
+import { Language } from "@ide/shared/src/lib/types";
 
 export type CodeEditorProps = {
-  yCode: Y.Text
+  language: Language;
+  yCode: Y.Text;
   awareness?: Awareness,
 }
+
 
 // TODO: Add support when a new instance of y.Text is passed
 export const CodeEditor = (props: CodeEditorProps) => {
   const [editorRef, setEditorRef] = createSignal<HTMLElement>();
 
   const undoManager = new Y.UndoManager(props.yCode)
+  let state: EditorState
+  let view: EditorView
 
-  onMount(() => {
+  const recreate = () => {
+    console.log("Recreate code editor")
+    if (view) {
+      view.destroy()
+    }
+
     const keyCommands = [
       ...defaultKeymap,
       {
@@ -36,21 +46,25 @@ export const CodeEditor = (props: CodeEditorProps) => {
       lineNumbers(),
       highlightActiveLineGutter(),
       keymap.of(keyCommands),
-      // yCollab(props.yText, props.awareness, {undoManager}),
-      // yCollab(props.yCode, null, {undoManager})
       yCollab(props.yCode, null, {undoManager: false})
     ];
 
-    let startState = EditorState.create({
+    state = EditorState.create({
       doc: props.yCode.toString(),
       extensions: extensions,
     });
 
-    let view = new EditorView({
-      state: startState,
+    view = new EditorView({
+      state: state,
       parent: editorRef(),
     });
-  });
+  }
+
+  onMount(() => {});
+
+  createEffect(() => {
+    recreate()
+  })
 
   return (
     <>

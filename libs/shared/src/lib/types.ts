@@ -1,3 +1,5 @@
+import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
+
 export enum Role {
   OWNER = 3,
   WRITE = 2,
@@ -7,15 +9,23 @@ export enum Role {
 
 export enum Language {
   PYTHON_3_12 = "python_3_12",
-  JS_NODE_20 = "js_node_20"
+  JS_NODE_20 = "js_node_20",
+  JS_NODE_20_ES6 = "js_node_20_es6"
 }
 
 export type Collaborator = {
   id: string, 
-  name: string;
+  name?: string;
+  joinedOn: string;
   codeEditorPosition?: any, 
   whiteboardPosition?: any, 
   activeElement?: "code-editor" | "whiteboard" | null
+}
+
+type Console = {
+  runInfo: {state: ApiState};
+  language: Language;
+  output: {stream: "stdout" | "stderr", data: string}[];
 }
 
 // This is persisted
@@ -29,7 +39,10 @@ export type Doc = {
 
   // code editor variables
   activeLanguage: Language,
-  languageCodeMap: Map<Language, string>,
+  languageCodeMap: {[languageId: string]: string},
+  
+  // console
+  console?: Console
 
   // whiteboard variables
   whiteboard: any[],
@@ -38,6 +51,7 @@ export type Doc = {
 // This is lost if server restarts
 export type Awareness = {
   // All run/debug sessions data goes here
+  console?: Console
 
   // collaborators
   collaborators: {[id: string]: Collaborator}

@@ -1,12 +1,12 @@
 import { appUser } from "@/db";
 import { DB } from "@/db/db";
-import { errorToWsErrorPayload, SocketError } from "@ide/ts-utils/src/lib/http";
-import { NextFunction, Request, Response } from 'express';
+import { errorToWsErrorPayload, httpErrorCodeToWsErrorCode, SocketError } from "@ide/ts-utils/src/lib/http";
+import e, { NextFunction, Request, Response } from 'express';
 import { sql } from 'slonik';
-import * as ws from "ws";
+import WebSocket from "ws";
 import * as Y from 'yjs'
 import { Role, Doc, Awareness, Language } from "@ide/shared/src/lib/types"
-import { fromBase64ToUint8Array, fromUint8ArrayToBase64 } from "@ide/shared/src/lib/helpers"
+import { fromBase64ToUint8Array, fromUint8ArrayToBase64, LangToPistonLangMap } from "@ide/shared/src/lib/helpers"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
 
@@ -17,55 +17,69 @@ const getUserRole = (userId: string, document: {owner: string, sharing: boolean}
   return Role.NO_ACCESS
 }
 
-type Room = {doc: Y.Doc, awareness: Y.Doc, userIdSocketMap: {[userId: string]: ws.WebSocket}, updateDocNameState: ApiState, updateShareInfoState: ApiState}
+type Room = {
+  yDoc: Y.Doc,  yAwareness: Y.Doc, 
+  prevDoc: Doc, doc: Doc, prevAwareness: Awareness, awareness: Awareness, 
+  userIdSocketMap: {[userId: string]: WebSocket}, 
+  updateDocNameState: ApiState, 
+  updateShareInfoState: ApiState,
+  codeExecutionSocket?: WebSocket
+}
 
 const newDoc = (document: any) => {
-  const doc = new Y.Doc()
+  const yDoc = new Y.Doc()
 
   // Create the root map
-  const rootMap = doc.getMap<any>();
+  const rootMap = yDoc.getMap<any>();
 
+  // room info
   rootMap.set('id', document.id);
   rootMap.set('name', document.name);
   rootMap.set('owner', document.owner);
   rootMap.set('sharing', document.sharing);
   rootMap.set('roomId', document.room_id);
 
+  // code editor
   rootMap.set('activeLanguage', Language.PYTHON_3_12);
   const languageCodeMap = new Y.Map();
   languageCodeMap.set(Language.PYTHON_3_12, new Y.Text(""))
   rootMap.set('languageCodeMap', languageCodeMap);
 
+  // whiteboard
   const whiteboard = new Y.Array();
   rootMap.set('whiteboard', whiteboard);
  
-  return doc
+  return yDoc
 }
 
-const docToJson = (doc: Y.Doc): Doc => {
-  return doc.getMap().toJSON() as any
+const yDocToJson = (yDoc: Y.Doc): Doc => {
+  return yDoc.getMap().toJSON() as any
 }
 
-const awarenessToJson = (awareness: Y.Doc): Awareness => {
-  return awareness.getMap().toJSON() as any
+const yAwarenessToJson = (yAwareness: Y.Doc): Awareness => {
+  return yAwareness.getMap().toJSON() as any
 }
 
 const newAwareness = () => {
-  const doc = new Y.Doc()
+  const yDoc = new Y.Doc()
 
   // Create the root map
-  const rootMap = doc.getMap<any>();
+  const rootMap = yDoc.getMap<any>();
 
   const collaborators = new Y.Map();
   rootMap.set('collaborators', collaborators);
 
-  return doc
+  return yDoc
 }
 
 const newRoom = (document): Room => {
+  const yDoc = newDoc(document)
+  const doc = yDoc.getMap().toJSON() as any
+  const yAwareness = newAwareness()
+  const awareness = yAwareness.getMap().toJSON() as any
   return {
-    doc: newDoc(document),
-    awareness: newAwareness(),
+    yDoc, yAwareness,
+    prevDoc:  doc, doc, prevAwareness: awareness, awareness,
     userIdSocketMap: {},
     updateDocNameState: ApiState.NOT_LOADED,
     updateShareInfoState: ApiState.NOT_LOADED
@@ -78,7 +92,7 @@ const updateDocName = async (docId: string) => {
   if (room.updateDocNameState === ApiState.LOADING) {
     return
   }
-  let name = room.doc.getMap().get("name") as string
+  let name = room.yDoc.getMap().get("name") as string
   room.updateDocNameState = ApiState.LOADING
   const query = sql.unsafe`
     UPDATE document 
@@ -95,7 +109,7 @@ const updateDocName = async (docId: string) => {
     console.error(error)
   }
 
-  let newName = room.doc.getMap().get("name") as string
+  let newName = room.yDoc.getMap().get("name") as string
   if (newName !== name) {
     updateDocName(docId)
   }
@@ -107,7 +121,7 @@ const updateShareInfo = async (docId: string) => {
   if (room.updateShareInfoState === ApiState.LOADING) {
     return
   }
-  let [sharing, roomId] = [room.doc.getMap().get("sharing") as boolean, room.doc.getMap().get("roomId") as string]
+  let [sharing, roomId] = [room.yDoc.getMap().get("sharing") as boolean, room.yDoc.getMap().get("roomId") as string]
   room.updateShareInfoState = ApiState.LOADING
   const query = sql.unsafe`
     UPDATE document 
@@ -124,7 +138,7 @@ const updateShareInfo = async (docId: string) => {
     console.error(error)
   }
 
-  let [newSharing, newRoomId] = [room.doc.getMap().get("sharing") as boolean, room.doc.getMap().get("roomId") as string]
+  let [newSharing, newRoomId] = [room.yDoc.getMap().get("sharing") as boolean, room.yDoc.getMap().get("roomId") as string]
   if (newSharing !== sharing || newRoomId !== roomId) {
     updateShareInfo(docId)
   }
@@ -192,48 +206,54 @@ const updateLastOpenedOn = async (userId: string, documentId: string, roomId: st
   await pool.query(query)
 }
 
+const sendMessageToOthers = (room: Room, message: string, author: string) => {
+  const {yAwareness, userIdSocketMap} = room
+  const collaborators = yAwarenessToJson(yAwareness).collaborators
+  for (let collaboratorId of Object.keys(collaborators)) {
+    if (author !== collaboratorId) {
+      const clientWs = userIdSocketMap[collaboratorId]
+      clientWs.send(message)
+    }
+  }
+}
+
 const addNewRoom = (document) => {
   const room = newRoom(document)
   rooms[document.id] = room
 
-  const {doc, awareness, userIdSocketMap} = room
+  const {yDoc, yAwareness} = room
 
-  doc.on("update", (update, _, __, tr) => {
+  yDoc.on("update", (update, _, __, tr) => {
     const {author = null, type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
     console.log('onDocUpdate', tr.local, author, type)  // , tr.origin, docToJson(doc))
 
-    const collaborators = awarenessToJson(awareness).collaborators
-    for (let collaboratorId of Object.keys(collaborators)) {
-      if (tr.local || author !== collaboratorId) {
-        // send to peers
-        const base64Update = fromUint8ArrayToBase64(update)
-        const message = {type, data, docDelta: base64Update}
-        const clientWs = userIdSocketMap[collaboratorId]
-        clientWs.send(JSON.stringify(message))
-      }
-    }  
+    const base64Update = fromUint8ArrayToBase64(update)
+    const message = {type, data, docDelta: base64Update}
+    
+    sendMessageToOthers(room, JSON.stringify(message), author)
+    
+    room.prevDoc = room.doc
+    room.doc = yDoc.getMap().toJSON() as any;
   })
 
-  awareness.on("update", (update, _, __, tr) => {
+  yAwareness.on("update", (update, _, __, tr) => {
     console.log('onAwarenessUpdate', tr.local, tr.origin)
     const {author = null, type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
 
-    const collaborators = awarenessToJson(awareness).collaborators
-    for (let collaboratorId of Object.keys(collaborators)) {
-      if (tr.local || author !== collaboratorId) {
-        // send to peers
-        const base64Update = fromUint8ArrayToBase64(update)
-        const message = {type, data, awarenessDelta: base64Update}
-        const clientWs = userIdSocketMap[collaboratorId]
-        clientWs.send(JSON.stringify(message))
-      }
-    }  
+    const base64Update = fromUint8ArrayToBase64(update)
+    const message = {type, data, awarenessDelta: base64Update}
+
+    sendMessageToOthers(room, JSON.stringify(message), author)
+
+    room.prevAwareness = room.awareness
+    room.awareness = yAwareness.getMap().toJSON() as any
+    console.log('awareness update', room.awareness)
   })
 }
 
 const rooms: {[docId: string]: Room} = {}
 
-export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentId?: string, roomId?: string}>) => {
+export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?: string, roomId?: string}>) => {
   console.log('New Client connected');
 
   let {documentId, roomId} = req.query
@@ -242,10 +262,10 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
   let updateUserNameState: ApiState = ApiState.NOT_LOADED
 
   if (documentId || roomId) {
-    documentId = documentId || Object.keys(rooms).find((x) => rooms[x].doc.getMap().get("roomId") === roomId)
+    documentId = documentId || Object.keys(rooms).find((x) => rooms[x].yDoc.getMap().get("roomId") === roomId)
     const room = rooms[documentId]
     if (room) {
-      if (getUserRole(user.id, docToJson(room.doc)) <= Role.NO_ACCESS) {
+      if (getUserRole(user.id, yDocToJson(room.yDoc)) <= Role.NO_ACCESS) {
         throw new SocketError({
           status: 403,
           code: 'forbidden',
@@ -253,7 +273,7 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
           closeSocket: true
         })
       }
-      await updateLastOpenedOn(user.id, documentId, docToJson(room.doc).roomId)
+      await updateLastOpenedOn(user.id, documentId, yDocToJson(room.yDoc).roomId)
     }
     else {
       const document = await getDocumentByDocIdOrRoomId(documentId, roomId)
@@ -288,22 +308,23 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
 
   // Session specific variables
   const room = rooms[documentId]
-  const {doc, awareness, userIdSocketMap} = room;
-  const role = getUserRole(user.id, docToJson(room.doc));
-  ws.send(JSON.stringify({type: 'init', data: {user, role, doc: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(room.doc)), awareness: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(room.awareness))}}))
+  const {yDoc, yAwareness, userIdSocketMap} = room;
+  const role = getUserRole(user.id, yDocToJson(room.yDoc));
+  ws.send(JSON.stringify({type: 'init', data: {user, role, yDoc: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yDoc)), yAwareness: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yAwareness))}}))
 
   userIdSocketMap[user.id] = ws
 
   const collaborator = new Y.Map()
   collaborator.set("id", user.id)
   collaborator.set("name", user.name);
-  (awareness.getMap().get("collaborators") as any).set(user.id, collaborator)
+  collaborator.set("joinedOn", new Date().toISOString());
+  (yAwareness.getMap().get("collaborators") as any).set(user.id, collaborator)
 
   const _updateUserName = async () => {
     if (updateUserNameState === ApiState.LOADING) {
       return
     }
-    let name = (awareness.getMap().get("collaborators") as any).get(user.id).get("name")
+    let name = (yAwareness.getMap().get("collaborators") as any).get(user.id).get("name")
     updateUserNameState = ApiState.LOADING
     const query = sql.unsafe`
       UPDATE app_user 
@@ -320,9 +341,125 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
       console.error(error)
     }
 
-    const x = (awareness.getMap().get("collaborators") as any).get(user.id)
+    const x = (yAwareness.getMap().get("collaborators") as any).get(user.id)
     if (x && x.get("name") !== name) {
       _updateUserName()
+    }
+  }
+
+  const _closeCodeExecution = () => {
+    if (!room.codeExecutionSocket) return
+    if (room.codeExecutionSocket.readyState === WebSocket.OPEN) {
+      room.codeExecutionSocket.close()
+    }
+  }
+
+  const _startNewExecution = () => {
+    // TODO: Is current socket check needed?
+    const _isCurrentSocket = (socket: WebSocket) => {
+      return socket === room.codeExecutionSocket
+    }
+
+    const _closeSocket = (socket: WebSocket) => {
+      console.log("Closing code execution socket...")
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close()
+      }
+    }
+
+    const _addListeners = (socket: WebSocket) => {
+      socket.on("open", (event) => {
+        console.log('code execution socket opened', event)
+        if (!_isCurrentSocket(socket)) {
+          return _closeSocket(socket)
+        }
+        if (room.awareness.console?.runInfo?.state !== ApiState.LOADING) {
+          return
+        }
+        const pistonLang = LangToPistonLangMap[room.doc.activeLanguage]
+        const message = {
+          "type": "init",
+      
+          "language": pistonLang.name,
+          "version": pistonLang.version,
+          "files": [
+              {
+                  "name": pistonLang.fileName,
+                  "content": room.doc.languageCodeMap[room.doc.activeLanguage]
+              }
+          ]
+        }
+        const _console = room.yAwareness.getMap().get("console") as any
+        const output = _console.get('output')
+        room.yAwareness.transact(() => {
+          output.push([{stream: 'stdout', data: `Executing ${pistonLang.fileName}...\n`}])
+        }, {author: "server", type: "codeExecutionMessage"})
+
+        socket.send(JSON.stringify(message))
+      })
+      
+      socket.on("message", (event) => {
+        console.log('on message from code excution server', event)
+        if (!_isCurrentSocket(socket)) {
+          return _closeSocket(socket)
+        }
+        if (room.awareness.console?.runInfo?.state !== ApiState.LOADING) {
+          return
+        }
+        const message = JSON.parse(event.toString())
+        const _console = room.yAwareness.getMap().get("console") as any
+        const output = _console.get('output')
+        switch (message.type) {
+          case "data": {
+            room.yAwareness.transact(() => {
+              output.push([{stream: message.stream, data: message.data}])
+            }, {author: "server", type: "codeExecutionMessage"})
+            break
+          }
+          case "exit": {
+            room.yAwareness.transact(() => {
+              output.push([{stream: message.stream, data: `\nProcess finished with exit code ${message.code}`}])
+              _console.set("runInfo", {state: message.code === 0 ? ApiState.LOADED : ApiState.ERROR})
+            }, {author: "server", type: "codeExecutionEnd"})
+            break
+          }       
+        }
+      })
+      
+      socket.on('close', function close() {
+        console.log('Disconnected from code execution server');
+        if (!_isCurrentSocket(socket)) {
+          return _closeSocket(socket)
+        }
+        if (room.awareness.console?.runInfo?.state === ApiState.LOADING) {
+          const _console = room.yAwareness.getMap().get("console") as any  
+          room.yAwareness.transact(() => {
+            _console.set("runInfo", {state: ApiState.ERROR})
+          }, {author: "server", type: "codeExecutionEnd"})
+        }   
+      });
+      
+      socket.on("error", (error) => {
+        console.error('Code execution websocket error', error)
+        // error event is always called before closing the socket
+      })
+    }
+
+    switch (room.codeExecutionSocket?.readyState) {
+      case WebSocket.CONNECTING: {
+        // still connecting, will reuse this
+        break
+      }
+      default: {
+        if (room.codeExecutionSocket?.readyState === WebSocket.OPEN) {
+          // close old connection
+          room.codeExecutionSocket.close()
+        }
+        // start a new connection
+        room.codeExecutionSocket = new WebSocket(`wss://piston.rahulbadenkal.com/api/v2/connect`)
+        _addListeners(room.codeExecutionSocket!)
+        break
+      }
     }
   }
 
@@ -331,10 +468,10 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
     const {type, data, docDelta, awarenessDelta} = message
 
     if (docDelta) {
-      Y.applyUpdate(doc, fromBase64ToUint8Array(docDelta), {author: user.id, type, data})
+      Y.applyUpdate(yDoc, fromBase64ToUint8Array(docDelta), {author: user.id, type, data})
     }
     if (awarenessDelta) {
-      Y.applyUpdate(awareness, fromBase64ToUint8Array(awarenessDelta), {author: user.id, type, data})
+      Y.applyUpdate(yAwareness, fromBase64ToUint8Array(awarenessDelta), {author: user.id, type, data})
     }
 
     switch (type) {
@@ -345,11 +482,11 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
       case "toggleSharing":
       case "changeRoomLink": {
         updateShareInfo(documentId)
-        const docJson = docToJson(doc)
+        const docJson = yDocToJson(yDoc)
         if (!docJson.sharing || type === "changeRoomLink") {
           // Sharing stopped, Kick every one out who is not the owner
-          const collaborators = awarenessToJson(awareness).collaborators
-          const owner = docToJson(doc).owner
+          const collaborators = yAwarenessToJson(yAwareness).collaborators
+          const owner = yDocToJson(yDoc).owner
           const error = new SocketError({status: 403, code: "forbidden", message: 'You have been kicked out', closeSocket: true})
           const message = {type: "error", data: error.payload}
           for (let collaboratorId of Object.keys(collaborators)) {
@@ -365,12 +502,42 @@ export const room = async (ws: ws.WebSocket, req: Request<{}, {}, {}, {documentI
         _updateUserName()
         break
       }
+      case "runCode": {
+        if (room.prevAwareness.console?.runInfo?.state === ApiState.LOADING) {
+          // revert the change
+          yAwareness.transact(() => {
+            const arr = new Y.Array()
+            arr.insert(0, room.prevAwareness.console.output)
+
+            const newMap = new Y.Map()
+            newMap.set("runInfo", room.prevAwareness.console.runInfo)
+            newMap.set("language", room.prevAwareness.console.language)
+            newMap.set("output", arr)
+
+            yAwareness.getMap().set("console", newMap)
+          }, {author: "server", type: "revertRunCode"})
+        }
+        else {
+          // start new code execution
+          _startNewExecution()
+        }
+        break;
+      }
+      case "rerunCode": {
+        // start new code execution
+        _startNewExecution()
+        break
+      }
+      case "stopCode": {
+        _closeCodeExecution()
+        break
+      }
     }
   });
 
   ws.on("close", () => {
-    if (awareness) {
-      (awareness.getMap().get("collaborators") as any).delete(user.id)
+    if (yAwareness) {
+      (yAwareness.getMap().get("collaborators") as any).delete(user.id)
       delete userIdSocketMap[user.id]
     }
   })

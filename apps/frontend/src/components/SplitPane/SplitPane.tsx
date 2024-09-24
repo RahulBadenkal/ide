@@ -1,13 +1,17 @@
-import { children, JSX, createEffect } from "solid-js";
+import { children, JSX, createEffect, onMount } from "solid-js";
 import "./SplitPane.scss"
 import Split from "split.js";
 
 export type SplitPaneProps = {
+  ref?: any
   children: JSX.Element;
   direction: Split.Options["direction"]
   minSize: Split.Options["minSize"];
   gutterSize: number;
   sizes: number[];
+
+  // events
+  onDragEnd?: Split.Options["onDragEnd"]
 }
 
 export const SplitPane = (props: SplitPaneProps) => {
@@ -15,7 +19,7 @@ export const SplitPane = (props: SplitPaneProps) => {
   let split: Split.Instance
 
   const recreate = () => {
-    // console.log("Recreating...", crypto.randomUUID().slice(0, 6))
+    console.log("Recreating...", crypto.randomUUID().slice(0, 6))
     if (split) {
       split.destroy()
     }
@@ -25,6 +29,7 @@ export const SplitPane = (props: SplitPaneProps) => {
       minSize: props.minSize,
       sizes: props.sizes,
       gutterSize: props.gutterSize,
+      onDragEnd: props?.onDragEnd,
 
       snapOffset: 0,
       dragInterval: 1,
@@ -32,7 +37,8 @@ export const SplitPane = (props: SplitPaneProps) => {
   }
 
 
-  createEffect(() => {
+  onMount(() => {
+    props.ref?.({ recreate });
     recreate()
   })
 

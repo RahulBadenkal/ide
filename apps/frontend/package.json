@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
-  "devDependencies": {},
   "scripts": {
     "prebuild": "sh prebuild.sh",
     "dev": "npm run prebuild && vite",
@@ -12,5 +11,8 @@
   },
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "@kobalte/core": "^0.13.6"
+  }
 }
