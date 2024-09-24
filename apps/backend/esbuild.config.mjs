@@ -6,7 +6,12 @@ import fs from "fs"
 const packageJsonFile = JSON.parse(fs.readFileSync(resolve(process.cwd(), "../", "../", "package.json"), "utf-8"))
 const dependencies = Object.keys(packageJsonFile.dependencies)
 const devDependencies = Object.keys(packageJsonFile.devDependencies)
-
+const allDependencies = [
+  ...dependencies,
+  ...devDependencies,
+  "ws"
+]
+console.log(allDependencies)
 
 await build({
   entryPoints: [resolve(process.cwd(), 'src', 'main.ts')],
@@ -16,7 +21,7 @@ await build({
   format: 'esm',
   minify: false,
   sourcemap: true,
-  external: dependencies.concat(devDependencies),
+  external: allDependencies,
   plugins: [
     copy({
       // this is equal to process.cwd(), which means we use cwd path as base path to resolve `to` path
