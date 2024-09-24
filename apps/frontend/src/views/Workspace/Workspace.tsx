@@ -199,7 +199,7 @@ export const Workspace = () => {
   }
 
   const onSocketClose = async () => {
-    if (pageLoadApiInfo().state === ApiState.LOADED && socketRetryCount() < 3) {
+    if (pageLoadApiInfo().state === ApiState.LOADED && socketRetryCount() < 3 && !(socketLoadInfo().error?.status || 500).toString().startsWith("4")) {
       return setupSocket(true)
     }
 
@@ -1368,7 +1368,7 @@ export const Workspace = () => {
         <AlertDialog open={socketLoadInfo().state === ApiState.ERROR}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Connection issue</AlertDialogTitle>
+              <AlertDialogTitle>Failed to connect</AlertDialogTitle>
               <AlertDialogDescription>
                 {socketLoadInfo().error.message}
               </AlertDialogDescription>
