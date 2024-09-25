@@ -23,7 +23,9 @@ type Room = {
   userIdSocketMap: {[userId: string]: WebSocket}, 
   updateDocNameState: ApiState, 
   updateShareInfoState: ApiState,
-  codeExecutionSocket?: WebSocket
+  codeExecutionSocket?: WebSocket,
+  docUpdatedAt?: string;
+  docSyncedId?: string;
 }
 
 const newDoc = (document: any) => {
@@ -73,7 +75,16 @@ const newAwareness = () => {
 }
 
 const newRoom = (document): Room => {
-  const yDoc = newDoc(document)
+  let yDoc: Y.Doc;
+  if (document.y_doc) {
+    // initialize from db
+    yDoc = new Y.Doc()
+    Y.applyUpdate(yDoc, document.y_doc)
+  }
+  else {
+    // initialize an empty doc
+    yDoc = newDoc(document)
+  }
   const doc = yDoc.getMap().toJSON() as any
   const yAwareness = newAwareness()
   const awareness = yAwareness.getMap().toJSON() as any
@@ -82,7 +93,8 @@ const newRoom = (document): Room => {
     prevDoc:  doc, doc, prevAwareness: awareness, awareness,
     userIdSocketMap: {},
     updateDocNameState: ApiState.NOT_LOADED,
-    updateShareInfoState: ApiState.NOT_LOADED
+    updateShareInfoState: ApiState.NOT_LOADED,
+    docUpdatedAt: document.y_doc ? new Date().toISOString() : null
   }
 }
 
@@ -234,6 +246,7 @@ const addNewRoom = (document) => {
     
     room.prevDoc = room.doc
     room.doc = yDoc.getMap().toJSON() as any;
+    room.docUpdatedAt = new Date().toISOString();
   })
 
   yAwareness.on("update", (update, _, __, tr) => {
@@ -251,6 +264,8 @@ const addNewRoom = (document) => {
   })
 }
 
+const DOC_TO_DB_INTERVAL = 2 * 60 * 1000
+let isDocToDBSaveInProgress = false;
 const rooms: {[docId: string]: Room} = {}
 
 export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?: string, roomId?: string}>) => {
@@ -421,6 +436,9 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
               output.push([{stream: message.stream, data: `\nProcess finished with exit code ${message.code}`}])
               _console.set("runInfo", {state: message.code === 0 ? ApiState.LOADED : ApiState.ERROR})
             }, {author: "server", type: "codeExecutionEnd"})
+            room.yDoc.transact(() => {
+              room.yDoc.getMap().set("console", room.awareness.console)
+            }, {author: "server", type: "addCodeExecutionToDoc"})
             break
           }       
         }
@@ -436,6 +454,9 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
           room.yAwareness.transact(() => {
             _console.set("runInfo", {state: ApiState.ERROR})
           }, {author: "server", type: "codeExecutionEnd"})
+          room.yDoc.transact(() => {
+            room.yDoc.getMap().set("console", room.awareness.console)
+          }, {author: "server", type: "addCodeExecutionToDoc"})
         }   
       });
       
@@ -560,5 +581,51 @@ export const getDocuments = async (req: Request, res: Response, next: NextFuncti
   `
   const documents =  await pool.any(query)
   return res.status(200).jsonp({documents})
-    
 }
+
+setInterval(async () => {
+  if (isDocToDBSaveInProgress) {
+    console.log("Doc save already in progress, return")
+    return
+  }
+  const documentIds = Object.keys(rooms)
+  console.log(`Saving doc to db in the interval, total docs in memory: ${documentIds.length}`)
+
+  let [total, fail] = [0, 0]
+  const pool = await DB.getPool()
+  for (let documentId of Object.keys(rooms)) {
+    const {yDoc, doc, docUpdatedAt, docSyncedId} = rooms[documentId]
+    if (!docUpdatedAt) {
+      continue
+    }
+    if (docUpdatedAt === docSyncedId) {
+      continue
+    }
+    total += 1
+
+    const update = Y.encodeStateAsUpdate(yDoc);
+    const binaryData = Buffer.from(update);
+
+    const query = sql.unsafe`
+      UPDATE document 
+      SET 
+        y_doc = ${sql.binary(binaryData)}, 
+        doc = ${sql.jsonb(doc)},
+        updated_on = NOW()
+      WHERE id::VARCHAR = ${documentId} 
+    `
+    try {
+      await pool.query(query)
+      if (rooms[documentId]) {
+        rooms[documentId].docSyncedId = docUpdatedAt
+      }
+    }
+    catch (error) {
+      fail += 1
+      console.error(`Failed to save doc to db: ${documentId}`)
+      console.error(error)
+    }
+  }
+
+  console.log(`Summary: In memory: ${documentIds.length}, To save: ${total}, Success: ${total - fail}, Fail: ${fail}`)
+}, DOC_TO_DB_INTERVAL)
