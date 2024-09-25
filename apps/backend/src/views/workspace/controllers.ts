@@ -24,8 +24,10 @@ type Room = {
   updateDocNameState: ApiState, 
   updateShareInfoState: ApiState,
   codeExecutionSocket?: WebSocket,
-  docUpdatedAt?: string;
-  docSyncedId?: string;
+  addedOn: string;  // Time at which room was created
+  updatedAt: string;  // Time at which any data in room was last updated (doc/awareness)
+  docUpdatedAt: string;  // Time at which doc was last updated
+  docSyncedId?: string;  // docUpdatedAt value when the doc was last synced to db
 }
 
 const newDoc = (document: any) => {
@@ -88,13 +90,17 @@ const newRoom = (document): Room => {
   const doc = yDoc.getMap().toJSON() as any
   const yAwareness = newAwareness()
   const awareness = yAwareness.getMap().toJSON() as any
+  const now = new Date().toISOString();
   return {
     yDoc, yAwareness,
     prevDoc:  doc, doc, prevAwareness: awareness, awareness,
     userIdSocketMap: {},
     updateDocNameState: ApiState.NOT_LOADED,
     updateShareInfoState: ApiState.NOT_LOADED,
-    docUpdatedAt: document.y_doc ? new Date().toISOString() : null
+    addedOn: now,
+    updatedAt: now,
+    docUpdatedAt: now,
+    docSyncedId: document.y_doc ? now : null
   }
 }
 
@@ -243,10 +249,12 @@ const addNewRoom = (document) => {
     const message = {type, data, docDelta: base64Update}
     
     sendMessageToOthers(room, JSON.stringify(message), author)
-    
+
+    const now = new Date().toISOString()
     room.prevDoc = room.doc
     room.doc = yDoc.getMap().toJSON() as any;
-    room.docUpdatedAt = new Date().toISOString();
+    room.docUpdatedAt = now  // TODO: Should we use a counter instead as there is a possibility that two updates have same timestamp?
+    room.updatedAt = now
   })
 
   yAwareness.on("update", (update, _, __, tr) => {
@@ -261,10 +269,20 @@ const addNewRoom = (document) => {
     room.prevAwareness = room.awareness
     room.awareness = yAwareness.getMap().toJSON() as any
     console.log('awareness update', room.awareness)
+    room.updatedAt = new Date().toISOString()
   })
 }
 
 const DOC_TO_DB_INTERVAL = 2 * 60 * 1000
+const CLEAR_ROOM_INTERVAL = 2 * 60 * 1000
+const ROOM_IDLE_TIME_WITHOUT_PEOPLE = 10 * 60 * 1000
+const ROOM_IDLE_TIME_WITH_PEOPLE = 20 * 60 * 1000
+
+// const DOC_TO_DB_INTERVAL = 2 * 60 * 1000
+// const CLEAR_ROOM_INTERVAL = 0.1 * 60 * 1000
+// const ROOM_IDLE_TIME_WITHOUT_PEOPLE = 0.5 * 60 * 1000
+// const ROOM_IDLE_TIME_WITH_PEOPLE = 1 * 60 * 1000
+
 let isDocToDBSaveInProgress = false;
 const rooms: {[docId: string]: Room} = {}
 
@@ -433,7 +451,7 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
           }
           case "exit": {
             room.yAwareness.transact(() => {
-              output.push([{stream: message.stream, data: `\nProcess finished with exit code ${message.code}`}])
+              output.push([{stream: "stdout", data: `\nProcess finished with exit code ${message.code}`}])
               _console.set("runInfo", {state: message.code === 0 ? ApiState.LOADED : ApiState.ERROR})
             }, {author: "server", type: "codeExecutionEnd"})
             room.yDoc.transact(() => {
@@ -583,21 +601,19 @@ export const getDocuments = async (req: Request, res: Response, next: NextFuncti
   return res.status(200).jsonp({documents})
 }
 
+// Sync doc to db
 setInterval(async () => {
   if (isDocToDBSaveInProgress) {
-    console.log("Doc save already in progress, return")
+    console.log(`[SAVE TO DB SUMMARY] Previous save already in progress, skipping`)
     return
   }
+  isDocToDBSaveInProgress = true
   const documentIds = Object.keys(rooms)
-  console.log(`Saving doc to db in the interval, total docs in memory: ${documentIds.length}`)
 
   let [total, fail] = [0, 0]
   const pool = await DB.getPool()
   for (let documentId of Object.keys(rooms)) {
-    const {yDoc, doc, docUpdatedAt, docSyncedId} = rooms[documentId]
-    if (!docUpdatedAt) {
-      continue
-    }
+    const {yDoc, doc, docUpdatedAt, docSyncedId, userIdSocketMap } = rooms[documentId]
     if (docUpdatedAt === docSyncedId) {
       continue
     }
@@ -627,5 +643,43 @@ setInterval(async () => {
     }
   }
 
-  console.log(`Summary: In memory: ${documentIds.length}, To save: ${total}, Success: ${total - fail}, Fail: ${fail}`)
+  isDocToDBSaveInProgress = false
+  console.log(`[SAVE TO DB SUMMARY] In memory: ${documentIds.length}, To save: ${total}, Success: ${total - fail}, Fail: ${fail}`)
 }, DOC_TO_DB_INTERVAL)
+
+
+// Clear idle rooms
+setInterval(async () => {
+  const documentIds = Object.keys(rooms)
+
+  let total = 0;
+  for (let documentId of Object.keys(rooms)) {
+    const {addedOn, updatedAt, docUpdatedAt, docSyncedId, userIdSocketMap } = rooms[documentId]
+    if (docUpdatedAt !== docSyncedId) {
+      // still needs to be synced
+      continue
+    }
+    const collaboratorIds = Object.keys(userIdSocketMap)
+    const maxTime = collaboratorIds.length > 0 ? ROOM_IDLE_TIME_WITH_PEOPLE : ROOM_IDLE_TIME_WITHOUT_PEOPLE
+    const diff = new Date().getTime() - new Date(updatedAt).getTime()
+    if (diff < maxTime) {
+      continue
+    }
+
+    total += 1
+
+    // Kick all collaborators out if any
+    const error = new SocketError({status: 400, code: "idle", message: 'Room has been closed due to inactivity', closeSocket: true})
+    const message = {type: "error", data: error.payload}
+    for (let collaboratorId of collaboratorIds) {
+      userIdSocketMap[collaboratorId].send(JSON.stringify(message)) 
+      userIdSocketMap[collaboratorId].close(error.payload.wsStatus, error.payload.message)  
+    }  
+
+    // Delete room from memory
+    delete rooms[documentId]
+  }
+
+  console.log(`[ROOM CLEANUP SUMMARY] In memory: ${documentIds.length}, Closed: ${total}`)
+}, CLEAR_ROOM_INTERVAL)
+
