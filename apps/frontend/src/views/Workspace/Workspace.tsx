@@ -2,7 +2,7 @@ import { batch, createEffect, createMemo, createSignal, For, Match, onMount, Sho
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
 import { useNavigate, useParams } from "@solidjs/router";
-import { formUrl, isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
+import { deepClone, formUrl, isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
 import { getCookie } from "@ide/browser-utils/src/lib/utils";
 import { Awareness, Collaborator, Doc, Language, Role } from "@ide/shared/src/lib/types"
 import * as Y from "yjs"
@@ -58,7 +58,7 @@ import {
   ComboboxContent,
   ComboboxInput
 } from "@/components/ui/combobox";
-import { Tab, TabProps } from "./Tab";
+import { Pane, PaneProps, Tab } from "./Pane";
 import { CodeEditor } from "@/components/CodeEditor/CodeEditor";
 import { Whiteboard, WhiteboardProps } from "@/components/Whiteboard/Whiteboard";
 import { SplitPane, SplitPaneProps } from "@/components/SplitPane/SplitPane";
@@ -86,25 +86,53 @@ import { Checkbox, CheckboxControl, CheckboxLabel } from "@/components/ui/checkb
 
 
 // types
-type LanguageMetadata = { id: Language, display: string, fileName: string, icon: any, runningIcon?: any}
-type TabType = "whiteboard" | "code" | "console"
+type LanguageMetadata = { id: Language, display: string, fileName: string, icon: any, runningIcon?: any }
 
-type SplitNodeSplit = {
+enum TabType {
+  WHITEBOARD = "whiteboard",
+  CODE_EDITOR = "code-editor",
+  CONSOLE = "console",
+  DUMMY = "dummy"
+}
+
+type SplitNodeSplitter = {
   type: "splitter",
   splitterId: string;
   children: SplitNode[]
 }
 type SplitNodeElement = {
-  type: "element",
-  elementId: TabType
+  type: "pane",
+  paneId: string;
 }
-type SplitNode = SplitNodeSplit | SplitNodeElement
-type SplitNodesProps = {
+type SplitNode = SplitNodeSplitter | SplitNodeElement
+type SplitterPropsMap = {
   [splitterId: string]: {
     direction: SplitPaneProps["direction"], sizes: number[], storedSizes: number[]
   }
 }
+type PanePropsMap = {
+  [paneId: string]: {
+    tabs: {id: string, type: TabType}[], activeTabId: string
+  }
+}
 
+type DraggedItemPane = {
+  type: "pane", paneId: string
+}
+type DraggedItemTab = {
+  type: "tab", paneId: string, tabId: string;
+}
+type DraggedItem = DraggedItemPane | DraggedItemTab
+type GlobalDropPoint = {
+  type: "global", style: string;
+}
+type PaneHeaderDropPoint = {
+  type: "paneHeader", paneId: string; tabIndex: number
+}
+type PaneBodyDropPoint = {
+  type: "paneBody", paneId: string, style: string;
+}
+type DropPoint = GlobalDropPoint | PaneHeaderDropPoint | PaneBodyDropPoint
 
 // Constants
 const LANGUAGE_METADATA: Map<Language, LanguageMetadata> = new Map([
@@ -126,6 +154,12 @@ const COLORS = [
   'bg-red-500',
   'bg-purple-500',
 ]
+const TABS_METADATA: {[tabId in TabType]: Omit< Tab, "id" | "icon"> & {icon: any}} = {
+  [TabType.WHITEBOARD]: {title: 'Whiteboard', icon: () => <CodeXmlIcon size={16} />},
+  [TabType.CODE_EDITOR]: {title: 'Code', icon: () => <CodeXmlIcon size={16} />},
+  [TabType.CONSOLE]: {title: 'Console', icon: () => <CodeXmlIcon size={16} />},
+  [TabType.DUMMY]: {title: 'Dummy', icon: () => <CodeXmlIcon size={16} />}
+}
 
 // Component
 export const Workspace = () => {
@@ -242,7 +276,7 @@ export const Workspace = () => {
     if (socket()) {
       if (socket().readyState === WebSocket.OPEN) {
         socket().close()
-        closeSocketEvents() 
+        closeSocketEvents()
       }
     }
 
@@ -307,6 +341,138 @@ export const Workspace = () => {
     }
   }
 
+  const enableFullScreen = () => {
+    const paneId = paneInFullScreen()
+
+    const _markAllEmpty = (node: SplitNode) => {
+      if (node.type === "pane") return
+
+      const nodeProps = splitterPropsMap()[node.splitterId]
+
+      nodeProps.sizes = node.children.map((_) => 0)
+      for (let childNode of node.children) {
+        _markAllEmpty(childNode)
+      }
+    }
+
+    const _recursive = (node: SplitNode) => {
+      if (node.type === "pane") {
+        return node.paneId === paneId
+      }
+
+      const nodeProps = splitterPropsMap()[node.splitterId]
+
+      // Update sizes for this node and all its children
+      let foundIndex = -1
+      for (let [index, childNode] of node.children.entries()) {
+        if (foundIndex >= 0) {
+          _markAllEmpty(childNode)
+        }
+        else {
+          foundIndex = _recursive(childNode) ? index : foundIndex
+        }
+      }
+
+      if (foundIndex >= 0) {
+        nodeProps.sizes = nodeProps.sizes.map((_, index) => index === foundIndex ? 100 : 0)
+        return true
+      }
+
+      return false
+    }
+
+    _recursive(splitNodes())
+    setSplitterPropsMap({ ...splitterPropsMap() })
+    for (let splitterId of Object.keys(splitterRefs)) {
+      splitterRefs[splitterId].recreate()
+    }
+  }
+
+  const disableFullScreen = () => {
+    const _restore = (node: SplitNode) => {
+      if (node.type === "pane") return
+
+      const nodeProps = splitterPropsMap()[node.splitterId]
+
+      nodeProps.sizes = nodeProps.storedSizes  // restore sizes
+
+      for (let childNode of node.children) {
+        _restore(childNode)
+      }
+    }
+
+    _restore(splitNodes())
+    setSplitterPropsMap({ ...splitterPropsMap() })
+    for (let splitterId of Object.keys(splitterRefs)) {
+      splitterRefs[splitterId].recreate()
+    }
+    // computeTabDirection()
+  }
+
+
+  const inRect = (rect: number[][], point: number[]) => {
+    // Points on rect is considered to be inside rect
+    // rect starts fomr top left and moves clockwise
+    if (point[0] < rect[0][0] || point[0] > rect[1][0]) {
+      return false
+    }
+    if (point[1] < rect[0][1] || point[1] > rect[2][1]) {
+      return false
+    }
+    return true
+  }
+
+  const partInConcentricRect = (outer: number[][], inner: number[][], point: number[]): "out" | "in" | "top" | "right" | "bottom" | "left" => {
+    if (!inRect(outer, point)) return "out"
+
+    if (inRect(inner, point)) return "in"
+
+    // Now the point is inside the trapezium
+    const [x, y] = point
+    if (x <= inner[0][0]) {
+      const diffX = x - outer[0][0]
+      const diffY = y - outer[0][1]
+      const inverseDiffY = outer[3][1] - y
+      if (diffX > diffY) return "top"
+      else if (diffX > inverseDiffY) return "bottom"
+      return "left"
+    }
+    else if (x >= inner[1][0]) {
+      const diffX = outer[1][0] - x
+      const diffY = y - outer[1][1]
+      const inverseDiffY = outer[2][1] - y
+      if (diffX > diffY) return "top"
+      else if (diffX > inverseDiffY) return "bottom"
+      return "right"
+    }
+    else {
+      const diffY = y - outer[0][1]
+      if (diffY <= inner[0][1] - outer[0][1]) return "top"
+      else return "bottom"
+    }
+  }
+
+  const getRectCoordinatesFromEl = (el: HTMLElement) => {
+    const x = el.getBoundingClientRect()
+    return [
+      [x.left, x.top],
+      [x.left + x.width, x.top],
+      [x.left + x.width, x.top + x.height],
+      [x.left, x.top + x.height]
+    ] 
+  }
+
+  const offsetRect = (rect: number[][], offset: number[]) => {
+    // offset starts from top and moves clockwise
+    // +ve offset = shrinking, -ve offset = expanding
+    return [
+      [rect[0][0] + offset[3], rect[0][1] + offset[0]],
+      [rect[1][0] - offset[1], rect[1][1] + offset[0]],
+      [rect[2][0] + offset[1], rect[2][1] - offset[2]],
+      [rect[3][0] - offset[3], rect[3][1] - offset[2]]
+    ]
+  }
+
   const setPageUrl = () => {
     // using window.history as i want to silently change the route without solid reloading the component
     if (doc().sharing) {
@@ -335,27 +501,27 @@ export const Workspace = () => {
     setDocumentsLoadInfo({ state: ApiState.LOADED })
   }
 
-  const computeTabDirection = () => {
-    const value = tabDirection()
-    const _computeTabDirection = (node: SplitNodeSplit) => {
-      const { sizes, direction } = splitNodesProps()[node.splitterId]
-      for (let [index, childNode] of node.children.entries()) {
-        if (childNode.type === "element") {
-          const size = sizes[index]
-          let _direction: TabProps["direction"] = direction === "horizontal" ? "left" : "up"
-          if (size <= SPLITTER_MIN_SIZE && index === 0) {
-            _direction = direction === "horizontal" ? "right" : "down"
-          }
-          value[childNode.elementId] = _direction
-        }
-        else {
-          _computeTabDirection(childNode)
-        }
-      }
-    }
-    _computeTabDirection(splitNodes())
-    setTabDirection({ ...value })
-  }
+  // const computeTabDirection = () => {
+  //   const value = tabDirection()
+  //   const _computeTabDirection = (node: SplitNodeSplit) => {
+  //     const { sizes, direction } = splitNodesProps()[node.splitterId]
+  //     for (let [index, childNode] of node.children.entries()) {
+  //       if (childNode.type === "element") {
+  //         const size = sizes[index]
+  //         let _direction: TabProps["direction"] = direction === "horizontal" ? "left" : "up"
+  //         if (size <= SPLITTER_MIN_SIZE && index === 0) {
+  //           _direction = direction === "horizontal" ? "right" : "down"
+  //         }
+  //         value[childNode.elementId] = _direction
+  //       }
+  //       else {
+  //         _computeTabDirection(childNode)
+  //       }
+  //     }
+  //   }
+  //   _computeTabDirection(splitNodes())
+  //   setTabDirection({ ...value })
+  // }
 
   const toolbarJsx = () => {
     const _languageDropdownJsx = () => {
@@ -510,7 +676,7 @@ export const Workspace = () => {
                     <For each={filteredCollaborators()}>
                       {(item, index) => <DropdownMenuItem closeOnSelect={false} class="flex items-center gap-x-2">
                         <div>
-                          <div class={`text-xs relative w-6 h-6 rounded-full ${COLORS[index() % COLORS.length]} flex items-center justify-center text-white font-semibold border-1 border-white`}
+                          <div class={`text-xs relative w-6 h-6 rounded-full ${COLORS[index() % COLORS.length]} flex items-center justify-center text-white font-semibold border border-white`}
                             style={`zIndex: ${visibleCollaboratorsCircles().length - index()}`}
                           >
                             {(item.name?.[0] || '-').toLocaleUpperCase()}
@@ -896,13 +1062,13 @@ export const Workspace = () => {
     </div>
   }
 
-  const recursiveLayout = (node: SplitNodeSplit) => {
+  const recursiveLayout = (node: SplitNodeSplitter) => {
     return <SplitPane
-      direction={splitNodesProps()[node.splitterId].direction}
-      sizes={splitNodesProps()[node.splitterId].sizes}
-      minSize={tabInFullScreen() ? 0 : SPLITTER_MIN_SIZE}
-      gutterSize={tabInFullScreen() ? 0 : SPLITTER_GUTTER_SIZE}
-      onDragEnd={(e) => onSplitterDragEnd(node.splitterId, e)}
+      direction={splitterPropsMap()[node.splitterId].direction}
+      sizes={splitterPropsMap()[node.splitterId].sizes}
+      minSize={paneInFullScreen() ? 0 : SPLITTER_MIN_SIZE}
+      gutterSize={paneInFullScreen() ? 0 : SPLITTER_GUTTER_SIZE}
+      onDragEnd={(sizes) => onSplitterDragEnd(node.splitterId, sizes)}
       ref={(r) => splitterRefs[node.splitterId] = r}
     >
       <For each={node.children}>
@@ -911,53 +1077,64 @@ export const Workspace = () => {
             return recursiveLayout(item)
           }
 
-          console.log("Re-render")
-          return <Switch>
-            <Match when={item.elementId === "whiteboard"}>
-              <Tab
-                class={!tabInFullScreen() || tabInFullScreen() === 'whiteboard' ? '' : 'hidden'}
-                direction={tabDirection()['whiteboard']}
-                inFullScreenMode={tabInFullScreen() === 'whiteboard'}
-                tabs={[{ id: 'whiteboard', icon: <CodeXmlIcon size={16} />, title: 'Whiteboard' }]}
-                activeTabId="whiteboard"
-                toggleFullScreenMode={() => toggleTabFullScreen("whiteboard")}
-                toggleExpandCollapse={() => toggleTabExpandCollapse("whiteboard")}
-              >
-                {whiteboardJsx}
-              </Tab>
-            </Match>
-            <Match when={item.elementId === "code"}>
-              <Tab
-                class={!tabInFullScreen() || tabInFullScreen() === 'code' ? '' : 'hidden'}
-                direction={tabDirection()['code']}
-                tabs={[{ id: 'code', icon: <CodeXmlIcon size={16} />, title: 'Code' }]}
-                activeTabId="code"
-                toggleFullScreenMode={() => toggleTabFullScreen("code")}
-                toggleExpandCollapse={() => toggleTabExpandCollapse("code")}
-              >
-                {codeJsx}
-              </Tab>
-            </Match>
-            <Match when={item.elementId === "console"}>
-              <Tab
-                class={!tabInFullScreen() || tabInFullScreen() === 'console' ? '' : 'hidden'}
-                direction={tabDirection()['console']}
-                tabs={[{ id: 'console', icon: <CirclePlayIcon size={16} />, title: 'Console' }]}
-                activeTabId="console"
-                toggleFullScreenMode={() => toggleTabFullScreen("console")}
-                toggleExpandCollapse={() => toggleTabExpandCollapse("console")}
-              >
-                {consoleJsx}
-              </Tab>
-            </Match>
-          </Switch>
+          return <div class="relative">
+            {/* Tab drop regions */}
+            <Show when={dropPoint()?.type === "paneBody" && (dropPoint() as any).paneId === item.paneId}>
+              <div class={`drop-target-pane-${item.paneId} absolute border border-solid border-blue-600 rounded-lg`} style={`z-index: 1000; ${(dropPoint() as any).style}`}>
+                <div class="w-full h-full bg-blue-300 opacity-30"></div>
+              </div>
+            </Show>
+
+            <Pane
+              id={item.paneId}
+              class={`border border-solid border-gray-300 ${!paneInFullScreen() || paneInFullScreen() === item.paneId ? '' : 'hidden'}`}
+              // direction={tabDirection()['whiteboard']}
+              inFullScreenMode={paneInFullScreen() === item.paneId}
+              tabs={panePropsMap()[item.paneId].tabs.map((x) => ({...TABS_METADATA[x.type], icon: TABS_METADATA[x.type].icon(), ...x}))}
+              activeTabId={panePropsMap()[item.paneId].activeTabId}
+              dropIndex={dropPoint()?.type === "paneHeader" && (dropPoint() as any).paneId === item.paneId ? (dropPoint() as any).tabIndex : undefined}
+              toggleFullScreenMode={() => togglePaneFullScreen(item.paneId)}
+              toggleExpand={() => togglePaneExpand(item.paneId)}
+              onDragStart={(e, tabId) => onPaneDragStart(e, item.paneId, tabId)}
+            >
+              <Switch>
+                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.WHITEBOARD}> 
+                  {whiteboardJsx}
+                </Match>
+                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CODE_EDITOR}> 
+                  {codeJsx}
+                </Match>
+                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CONSOLE}> 
+                  {consoleJsx}
+                </Match>
+                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CONSOLE}> 
+                  <div class="w-full h-full">Dummy console</div>
+                </Match>
+              </Switch>
+            </Pane>
+          </div>
         }}
       </For>
     </SplitPane>
   }
-
+  
   const bodyJsx = () => {
-    return <div class='grow px-[10px] pb-[10px] overflow-auto flex flex-col gap-2'>
+    return <div class={`drop-boundary grow mx-[10px] mb-[10px] overflow-auto flex flex-col gap-2 relative`} >
+      {/* Global drag drop anchors */}
+      <Show when={isDragging()}>
+        <div class="absolute bg-blue-600" style="width: 150px; height: 5px; border-bottom-left-radius: 500px; border-bottom-right-radius: 500px; left: 50%; transform: translateX(-50%); z-index: 1001"></div>
+        <div class="absolute bg-blue-600" style="width: 5px; height: 150px; border-top-left-radius: 500px; border-bottom-left-radius: 500px; top: 50%; right: 0%; transform: translateY(-50%); z-index: 1001"></div>
+        <div class="absolute bg-blue-600" style="width: 150px; height: 5px; border-top-left-radius: 500px; border-top-right-radius: 500px; bottom: 0%; left: 50%; transform: translateX(-50%); z-index: 1001"></div>
+        <div class="absolute bg-blue-600" style="width: 5px; height: 150px; border-top-right-radius: 500px; border-bottom-right-radius: 500px; top: 50%; left: 0%; transform: translateY(-50%); z-index: 1001"></div>
+      </Show>
+     
+      {/* Global drop region */}
+      <Show when={dropPoint()?.type === "global"}>
+        <div class={`drop-target-global absolute border border-solid border-blue-600 rounded-lg`} style={`z-index: 1000; ${(dropPoint() as any).style}`}>
+          <div class="w-full h-full bg-blue-300 opacity-30"></div>
+        </div>
+      </Show>
+     
       {recursiveLayout(splitNodes())}
     </div>
   }
@@ -990,7 +1167,7 @@ export const Workspace = () => {
   const [isRoomLinkCopied, setIsRoomLinkCopied] = createSignal(false)
   const [isNewRoomLinkGenerated, setIsNewLinkGenerated] = createSignal(false)
 
-  const [tabInFullScreen, setTabInFullScreen] = createSignal<TabType | null>()
+  const [paneInFullScreen, setPaneInFullScreen] = createSignal<string>()
   const [consoleContainerRef, setConsoleContainerRef] = createSignal<any>()
   const [consoleWrap, setConsoleWrap] = createSignal<boolean>()
   const [showRerunCodeModal, setShowRerunCodeModal] = createSignal(false)
@@ -1011,30 +1188,43 @@ export const Workspace = () => {
     {_consoleJsx()}
   </Show>
 
-  // This only holds the structure of the panes
-  const [splitNodes, setSplitNodes] = createSignal<SplitNodeSplit>({
-    type: "splitter", 
+  // This only holds the structure of the splitters
+  const [splitNodes, setSplitNodes] = createSignal<SplitNodeSplitter>({
+    type: "splitter",
     splitterId: "1",
     children: [
-      { type: "element", elementId: "whiteboard" },
-      {
-        type: "splitter", splitterId: "2", children: [
-          { type: "element", elementId: "code" },
-          { type: "element", elementId: "console" },
-        ]
-      }
+      {type: "pane", paneId: "1"},
+      {type: "splitter", splitterId: "2", children: [
+        {type: "pane", paneId: "2"},
+        {type: "pane", paneId: "3"},
+      ]}
     ]
   })
-  // This holds the props for all panes
-  const [splitNodesProps, setSplitNodeProps] = createSignal<SplitNodesProps>({
+  // This holds the props for all splitters
+  const [splitterPropsMap, setSplitterPropsMap] = createSignal<SplitterPropsMap>({
     "1": { direction: "horizontal", sizes: [50, 50], storedSizes: [50, 50] },
     "2": { direction: "vertical", sizes: [50, 50], storedSizes: [50, 50] },
   })
-  // This holds references for all panes
-  // Right now no panes are deleted, so not worrying about cleanup
+  // This holds the reference to all splitter component refs
+  // TODO: Manage cleanup of deleted refs
   const splitterRefs = {}
+
+  // This holds the props for all panes
+  const [panePropsMap, setPanePropsMap] = createSignal<PanePropsMap>({
+    "1": { tabs: [{id: "1", type: TabType.WHITEBOARD}, {id: "1.1", type: TabType.DUMMY}], activeTabId: TabType.WHITEBOARD },
+    "2": { tabs: [{id: "2", type: TabType.CODE_EDITOR}], activeTabId: TabType.CODE_EDITOR },
+    "3": { tabs: [{id: "3", type: TabType.CONSOLE}], activeTabId: TabType.CONSOLE },
+  }) 
+
   // Holds the collapse/expand arrow direction for tabs
-  const [tabDirection, setTabDirection] = createSignal<{ [key: string]: TabProps["direction"] }>({ whiteboard: "left", code: "up", console: "up" })
+  // const [tabDirection, setTabDirection] = createSignal<{ [key: string]: PaneProps["direction"] }>({ whiteboard: "left", code: "up", console: "up" })
+  
+  // drag drop related variables
+  const [isDragging, setIsDragging] = createSignal(false)
+  const [draggedItem, setDraggedItem] = createSignal<DraggedItem>(null)
+  const [dropPoint, setDropPoint] = createSignal<DropPoint>(null)
+  // TODO: add cleanup for els that are no longer in dom
+  let lastDropTargetEl: HTMLElement | null = null
 
   // computed variables
   const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
@@ -1061,14 +1251,23 @@ export const Workspace = () => {
     .filter((collaborator) => !collaboratorsSearchText() ? true : (collaborator.name || '-').toLocaleLowerCase().includes(collaboratorsSearchText().toLocaleLowerCase()))
     : []
   )
+  const tabInfoMap = createMemo<{[tabId: string]: {id: string, paneId: string, tabType: TabType}}>(() => {
+    const x = {}
+    for (let paneId of Object.keys(panePropsMap())) {
+      for (let tab of panePropsMap()[paneId].tabs) {
+        x[tab.id] = {id: tab.id, paneId, tabType: tab.type}
+      }
+    }
+    return x
+  })
 
   // events
   setupSocket()
 
   onMount((() => {
-    computeTabDirection()
+    // computeTabDirection()
   }))
-  
+
   const reconnect = () => {
     setSocketRetryCount(0)
     setupSocket()
@@ -1149,99 +1348,180 @@ export const Workspace = () => {
     setTimeout(() => setIsNewLinkGenerated(false), 2000)
     setPageUrl()
   }
+  
+  // splitter events
+  const onSplitterDragEnd = (splitterId: string, sizes: number[]) => {
+    console.log(splitterId, sizes)
+    batch(() => {
+      splitterPropsMap()[splitterId].sizes = sizes
+      splitterPropsMap()[splitterId].storedSizes = sizes
+      setSplitterPropsMap({ ...splitterPropsMap() })
+      // computeTabDirection()
+    })
+  }
 
-  const toggleTabFullScreen = (tabType: TabType) => {
-    if (isNullOrUndefined(tabInFullScreen())) {
-      setTabInFullScreen(tabType)
+  // Pane events
+  const togglePaneFullScreen = (paneId: string) => {
+    console.log('togglePaneFullScreen', paneId)
+    if (isNullOrUndefined(paneInFullScreen())) {
+      setPaneInFullScreen(paneId)
       enableFullScreen()
     }
     else {
-      setTabInFullScreen(null)
+      setPaneInFullScreen(null)
       disableFullScreen()
     }
   }
 
-  const enableFullScreen = () => {
-    const tabType = tabInFullScreen()
+  const togglePaneExpand = (paneId: string) => {
+    
+  }
 
-    const _markAllEmpty = (node: SplitNode) => {
-      if (node.type === "element") return
+  const onPaneDragStart = (event: MouseEvent, paneId: string, tabId?: string) => {
+    console.log('onPaneDragStart', paneId, tabId, event);
+    batch(() => {
+      document.body.classList.add('dragging')
+      setIsDragging(true)
+      setDraggedItem({type: tabId ? "tab" : "pane", paneId, tabId})
+    })
+  }
 
-      const nodeProps = splitNodesProps()[node.splitterId]
+  const onPaneDragEnd = (e: MouseEvent) => {
+    console.log('onPaneDragEnd', e)
+    batch(() => {
+      document.body.classList.remove('dragging')
+      setIsDragging(false)
+      setDraggedItem(null)
+      setDropPoint(null)
 
-      nodeProps.sizes = node.children.map((_) => 0)
-      for (let childNode of node.children) {
-        _markAllEmpty(childNode)
-      }
+      // TODO: Update layout
+    })
+  }
+  
+  const onPaneDrag = (e: MouseEvent) => {
+    // console.log('onPaneDrag', e)
+
+    const point = [e.clientX, e.clientY]
+
+    // Update the psoition of drag handle
+    const dragCursorEl: HTMLDivElement = document.querySelector(".drag-cursor")
+    if (dragCursorEl) {
+      const width = dragCursorEl.getBoundingClientRect().width
+      dragCursorEl.style.left = (point[0] - width/2) + "px"
+      dragCursorEl.style.top = (point[1] + 5) + "px"
     }
 
-    const _recursive = (node: SplitNode) => {
-      if (node.type === "element") {
-        return node.elementId === tabType
-      }
+    // Calculate drop tagets
+    let dropBoundary = getRectCoordinatesFromEl(document.querySelector(".drop-boundary"))
+    const offset = offsetRect(dropBoundary, new Array(4).fill(SPLITTER_MIN_SIZE / 4))
 
-      const nodeProps = splitNodesProps()[node.splitterId]
-
-      // Update sizes for this node and all its children
-      let foundIndex = -1
-      for (let [index, childNode] of node.children.entries()) {
-        if (foundIndex >= 0) {
-          _markAllEmpty(childNode)
+    const x = partInConcentricRect(dropBoundary, offset, point)
+    if (x === "out") {
+      // console.log('Outside boundary, Keeping the last known drop point', dropPoint())
+      return
+    }
+    else if (x !== "in") {
+      let style = ""
+      switch (x) {
+        case "top": {
+          style = `top: 0; width: 100%; height: 25%;`
+          break
         }
-        else {
-          foundIndex = _recursive(childNode) ? index : foundIndex
+        case "right": {
+          style = `right: 0; width: 25%; height:100%;`
+          break
+        }
+        case "bottom": {
+          style = `bottom: 0; width: 100%; height:25%;`
+          break
+        }
+        case "left": {
+          style = `left: 0; width: 25%; height:100%;`
+          break
         }
       }
+      setDropPoint({type: "global", style})
+      // console.log(dropPoint())
+      return
+    }
 
-      if (foundIndex >= 0) {
-        nodeProps.sizes = nodeProps.sizes.map((_, index) => index === foundIndex ? 100 : 0)
-        return true
+    // Check if in headers
+    const tabHeaderGroups: HTMLElement[] = Array.from(document.querySelectorAll(".pane .tab-header-group"))
+    const tabHeaders: HTMLElement[] = Array.from(document.querySelectorAll(".pane .tab-header"))
+
+    for (let headerGroup of tabHeaderGroups) {
+      const rect = getRectCoordinatesFromEl(headerGroup)
+      const paneId = headerGroup.dataset.paneId;
+      const painOrientation = headerGroup.dataset.painOrientation
+
+      if (inRect(rect, point)) {
+        for (let header of tabHeaders) {
+          const rect2 = getRectCoordinatesFromEl(header)
+          const tabHeaderIndex = +header.dataset.tabHeaderIndex
+          if (inRect(rect2, point)) {
+            const offset = painOrientation ? [0, 0, (rect2[2][1] - rect2[1][1])/2, 0]: [0, (rect2[1][0] - rect2[0][0])/2, 0, 0]
+            const _offsetRect = offsetRect(rect2, offset)
+            if (inRect(_offsetRect, point)) {
+              setDropPoint({type: "paneHeader", paneId, tabIndex: tabHeaderIndex})
+              console.log(dropPoint())
+            }
+            else {
+              setDropPoint({type: "paneHeader", paneId, tabIndex: tabHeaderIndex + 1})
+              // console.log(dropPoint())
+            }
+            return
+          }
+        }
+        setDropPoint({type: "paneHeader", paneId, tabIndex: panePropsMap()[paneId].tabs.length})
+        // console.log(dropPoint())
+        return
       }
-
-      return false
     }
 
-    _recursive(splitNodes())
-    setSplitNodeProps({ ...splitNodesProps() })
-    for (let splitterId of Object.keys(splitterRefs)) {
-      splitterRefs[splitterId].recreate()
-    }
-  }
-
-  const disableFullScreen = () => {
-    const _restore = (node: SplitNode) => {
-      if (node.type === "element") return
-
-      const nodeProps = splitNodesProps()[node.splitterId]
-
-      nodeProps.sizes = nodeProps.storedSizes  // restore sizes
-
-      for (let childNode of node.children) {
-        _restore(childNode)
+    // Check if in tab body
+    const tabBody: HTMLElement[] = Array.from(document.querySelectorAll(".pane .pane-body"))
+    for (let body of tabBody) {
+      const paneId = body.dataset.paneId;
+      const outerRect = getRectCoordinatesFromEl(body)
+      const width = outerRect[1][0] - outerRect[0][0]
+      const height = outerRect[2][1] - outerRect[1][1]
+      const innerRect = offsetRect(outerRect, [height/4, width/4, height/4, width/4])
+      const x = partInConcentricRect(outerRect, innerRect, point)
+      if (x === "out") {
+        continue
       }
+      let style = ""
+      switch (x) {
+        case "top": {
+          style = "top: 0; width: 100%; height: 50%;"
+          break
+        }
+        case "right": {
+          style = "right: 0; width: 50%; height: 100%;"
+          break
+        }
+        case "bottom": {
+          style = "bottom: 0; width: 100%; height: 50%;"
+          break
+        }
+        case "left": {
+          style = "bottom: 0; width: 50%; height: 100%;"
+          break
+        }
+        case "in": {
+          style = "width: 100%; height: 100%"
+          break
+        }
+      }
+      setDropPoint({type: "paneBody", paneId, style})
+      // console.log(dropPoint())
+      return
     }
-
-    _restore(splitNodes())
-    setSplitNodeProps({ ...splitNodesProps() })
-    for (let splitterId of Object.keys(splitterRefs)) {
-      splitterRefs[splitterId].recreate()
-    }
-    computeTabDirection()
+  
+    // Missed some parts, most likely the gutter. In this case keep the last known droppoint as i
+    // console.log('No match found, Keeping the last known drop point', dropPoint())
   }
-
-  const toggleTabExpandCollapse = (tabType: TabType) => {
-    // TODO: Implement this
-  }
-
-
-  const onSplitterDragEnd = (splitterId: string, e: number[]) => {
-    console.log(splitterId, e)
-    splitNodesProps()[splitterId].sizes = e
-    splitNodesProps()[splitterId].storedSizes = e
-    setSplitNodeProps({ ...splitNodesProps() })
-    computeTabDirection()
-  }
-
+  
   // Console events
   const runCode = async () => {
     setIsAtBottomOfConsole(true)
@@ -1262,7 +1542,7 @@ export const Workspace = () => {
       setShowRerunCodeModal(true)
     }
   }
-  
+
   const rerunCodeConfirm = () => {
     setShowRerunCodeModal(false)
     setIsAtBottomOfConsole(true)
@@ -1318,7 +1598,27 @@ export const Workspace = () => {
           <div class="text-red-600">{pageLoadApiInfo().error?.message}</div>
         </Match> */}
         <Match when={pageLoadApiInfo().state === ApiState.LOADED}>
-          <div class='h-full flex flex-col app-bg'>
+          {/* Ideally we should not event have the onMouseMove listener when not dragging */}
+          <div class={`h-full flex flex-col app-bg relative`} onMouseMove={(e) => isDragging() ? onPaneDrag(e) : null} onMouseUp={(e) => isDragging() ? onPaneDragEnd(e) : null}>
+            {/* A overlay added when dragging is on to disable css changes becuase of hover (and other reasons) when draggin is on */}
+            <Show when={isDragging()}>
+              <div class={`absolute w-full h-full`} style="z-index: 1000; background: transparent"></div>
+            </Show>
+            {/* Cursor ui while dragging */}
+            <Show when={isDragging()}>
+              <div class={`drag-cursor absolute`} style="z-index: 1000;">
+                <div class="flex items-center gap-1 text-sm flex-row px-2 py-1 bg-white rounded-sm border border-gray-300">
+                  <Show when={draggedItem().type === "tab"} fallback={<div class="text-xs">
+                    {TABS_METADATA[panePropsMap()[draggedItem().paneId].activeTabId].title} and {panePropsMap()[draggedItem().paneId].tabs.length} tabs
+                  </div>}>
+                    <div >{TABS_METADATA[tabInfoMap()[(draggedItem() as any).tabId].tabType].icon}</div>
+                    <div class="">{TABS_METADATA[tabInfoMap()[(draggedItem() as any).tabId].tabType].title}</div>
+                  </Show>
+                  
+                </div>
+              </div>
+            </Show>
+
             {toolbarJsx()}
             {bodyJsx()}
           </div>
@@ -1330,34 +1630,34 @@ export const Workspace = () => {
               </AlertDialogContent>
             </AlertDialog>
           </Show>
-          
+
           {/* Rerun code */}
           <Show when={showRerunCodeModal()}>
-          <AlertDialog open={showRerunCodeModal()}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Process {LANGUAGE_METADATA.get(activeLanguage()).fileName} is running</AlertDialogTitle>
-                <AlertDialogDescription>
-                  <div>{LANGUAGE_METADATA.get(activeLanguage()).fileName} is not allowed to run in parallel.</div> 
-                  <div>Would you like to stop this and start a new one?</div> 
-                  <div class="mt-4">
-                    <Checkbox class="flex space-x-2" checked={!showRerunCodeModalAlert()} onChange={() => setShowRerunCodeModalAlert(!showRerunCodeModalAlert())}>
-                      <CheckboxControl class="!ml-0"/>
-                      <CheckboxLabel class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                        Do not show this dialog in the future
-                      </CheckboxLabel>
-                    </Checkbox>
-                  </div>
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogClose onClick={() => rerunCodeCancel()}>Cancel</AlertDialogClose>
-                <AlertDialogAction onClick={() => rerunCodeConfirm()} >Stop and Rerun</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+            <AlertDialog open={showRerunCodeModal()}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Process {LANGUAGE_METADATA.get(activeLanguage()).fileName} is running</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    <div>{LANGUAGE_METADATA.get(activeLanguage()).fileName} is not allowed to run in parallel.</div>
+                    <div>Would you like to stop this and start a new one?</div>
+                    <div class="mt-4">
+                      <Checkbox class="flex space-x-2" checked={!showRerunCodeModalAlert()} onChange={() => setShowRerunCodeModalAlert(!showRerunCodeModalAlert())}>
+                        <CheckboxControl class="!ml-0" />
+                        <CheckboxLabel class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          Do not show this dialog in the future
+                        </CheckboxLabel>
+                      </Checkbox>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogClose onClick={() => rerunCodeCancel()}>Cancel</AlertDialogClose>
+                  <AlertDialogAction onClick={() => rerunCodeConfirm()} >Stop and Rerun</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </Show>
-          
+
         </Match>
       </Switch>
 
