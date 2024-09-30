@@ -112,7 +112,7 @@ type SplitterPropsMap = {
 }
 type PanePropsMap = {
   [paneId: string]: {
-    tabs: {id: string, type: TabType}[], activeTabId: string
+    tabs: { id: string, type: TabType }[], activeTabId: string
   }
 }
 
@@ -123,16 +123,10 @@ type DraggedItemTab = {
   type: "tab", paneId: string, tabId: string;
 }
 type DraggedItem = DraggedItemPane | DraggedItemTab
-type GlobalDropPoint = {
-  type: "global", style: string;
+type DropTarget = {
+  el: { outer: { class: string; style: string }, inner: { class: string; style: string } },
+  config: any
 }
-type PaneHeaderDropPoint = {
-  type: "paneHeader", paneId: string; tabIndex: number
-}
-type PaneBodyDropPoint = {
-  type: "paneBody", paneId: string, style: string;
-}
-type DropPoint = GlobalDropPoint | PaneHeaderDropPoint | PaneBodyDropPoint
 
 // Constants
 const LANGUAGE_METADATA: Map<Language, LanguageMetadata> = new Map([
@@ -154,11 +148,11 @@ const COLORS = [
   'bg-red-500',
   'bg-purple-500',
 ]
-const TABS_METADATA: {[tabId in TabType]: Omit< Tab, "id" | "icon"> & {icon: any}} = {
-  [TabType.WHITEBOARD]: {title: 'Whiteboard', icon: () => <CodeXmlIcon size={16} />},
-  [TabType.CODE_EDITOR]: {title: 'Code', icon: () => <CodeXmlIcon size={16} />},
-  [TabType.CONSOLE]: {title: 'Console', icon: () => <CodeXmlIcon size={16} />},
-  [TabType.DUMMY]: {title: 'Dummy', icon: () => <CodeXmlIcon size={16} />}
+const TABS_METADATA: { [tabId in TabType]: Omit<Tab, "id" | "icon"> & { icon: any } } = {
+  [TabType.WHITEBOARD]: { title: 'Whiteboard', icon: () => <CodeXmlIcon size={16} /> },
+  [TabType.CODE_EDITOR]: { title: 'Code', icon: () => <CodeXmlIcon size={16} /> },
+  [TabType.CONSOLE]: { title: 'Console', icon: () => <CodeXmlIcon size={16} /> },
+  [TabType.DUMMY]: { title: 'Dummy', icon: () => <CodeXmlIcon size={16} /> }
 }
 
 // Component
@@ -459,7 +453,7 @@ export const Workspace = () => {
       [x.left + x.width, x.top],
       [x.left + x.width, x.top + x.height],
       [x.left, x.top + x.height]
-    ] 
+    ]
   }
 
   const offsetRect = (rect: number[][], offset: number[]) => {
@@ -1078,36 +1072,29 @@ export const Workspace = () => {
           }
 
           return <div class="relative">
-            {/* Tab drop regions */}
-            <Show when={dropPoint()?.type === "paneBody" && (dropPoint() as any).paneId === item.paneId}>
-              <div class={`drop-target-pane-${item.paneId} absolute border border-solid border-blue-600 rounded-lg`} style={`z-index: 1000; ${(dropPoint() as any).style}`}>
-                <div class="w-full h-full bg-blue-300 opacity-30"></div>
-              </div>
-            </Show>
-
             <Pane
               id={item.paneId}
               class={`border border-solid border-gray-300 ${!paneInFullScreen() || paneInFullScreen() === item.paneId ? '' : 'hidden'}`}
               // direction={tabDirection()['whiteboard']}
               inFullScreenMode={paneInFullScreen() === item.paneId}
-              tabs={panePropsMap()[item.paneId].tabs.map((x) => ({...TABS_METADATA[x.type], icon: TABS_METADATA[x.type].icon(), ...x}))}
+              tabs={panePropsMap()[item.paneId].tabs.map((x) => ({ ...TABS_METADATA[x.type], icon: TABS_METADATA[x.type].icon(), ...x }))}
               activeTabId={panePropsMap()[item.paneId].activeTabId}
-              dropIndex={dropPoint()?.type === "paneHeader" && (dropPoint() as any).paneId === item.paneId ? (dropPoint() as any).tabIndex : undefined}
+              // dropIndex={dropPoint()?.type === "paneHeader" && (dropPoint() as any).paneId === item.paneId ? (dropPoint() as any).tabIndex : undefined}
               toggleFullScreenMode={() => togglePaneFullScreen(item.paneId)}
               toggleExpand={() => togglePaneExpand(item.paneId)}
               onDragStart={(e, tabId) => onPaneDragStart(e, item.paneId, tabId)}
             >
               <Switch>
-                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.WHITEBOARD}> 
+                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.WHITEBOARD}>
                   {whiteboardJsx}
                 </Match>
-                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CODE_EDITOR}> 
+                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CODE_EDITOR}>
                   {codeJsx}
                 </Match>
-                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CONSOLE}> 
+                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CONSOLE}>
                   {consoleJsx}
                 </Match>
-                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CONSOLE}> 
+                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CONSOLE}>
                   <div class="w-full h-full">Dummy console</div>
                 </Match>
               </Switch>
@@ -1117,7 +1104,7 @@ export const Workspace = () => {
       </For>
     </SplitPane>
   }
-  
+
   const bodyJsx = () => {
     return <div class={`drop-boundary grow mx-[10px] mb-[10px] overflow-auto flex flex-col gap-2 relative`} >
       {/* Global drag drop anchors */}
@@ -1127,14 +1114,7 @@ export const Workspace = () => {
         <div class="absolute bg-blue-600" style="width: 150px; height: 5px; border-top-left-radius: 500px; border-top-right-radius: 500px; bottom: 0%; left: 50%; transform: translateX(-50%); z-index: 1001"></div>
         <div class="absolute bg-blue-600" style="width: 5px; height: 150px; border-top-right-radius: 500px; border-bottom-right-radius: 500px; top: 50%; left: 0%; transform: translateY(-50%); z-index: 1001"></div>
       </Show>
-     
-      {/* Global drop region */}
-      <Show when={dropPoint()?.type === "global"}>
-        <div class={`drop-target-global absolute border border-solid border-blue-600 rounded-lg`} style={`z-index: 1000; ${(dropPoint() as any).style}`}>
-          <div class="w-full h-full bg-blue-300 opacity-30"></div>
-        </div>
-      </Show>
-     
+
       {recursiveLayout(splitNodes())}
     </div>
   }
@@ -1193,11 +1173,13 @@ export const Workspace = () => {
     type: "splitter",
     splitterId: "1",
     children: [
-      {type: "pane", paneId: "1"},
-      {type: "splitter", splitterId: "2", children: [
-        {type: "pane", paneId: "2"},
-        {type: "pane", paneId: "3"},
-      ]}
+      { type: "pane", paneId: "1" },
+      {
+        type: "splitter", splitterId: "2", children: [
+          { type: "pane", paneId: "2" },
+          { type: "pane", paneId: "3" },
+        ]
+      }
     ]
   })
   // This holds the props for all splitters
@@ -1211,18 +1193,18 @@ export const Workspace = () => {
 
   // This holds the props for all panes
   const [panePropsMap, setPanePropsMap] = createSignal<PanePropsMap>({
-    "1": { tabs: [{id: "1", type: TabType.WHITEBOARD}, {id: "1.1", type: TabType.DUMMY}], activeTabId: TabType.WHITEBOARD },
-    "2": { tabs: [{id: "2", type: TabType.CODE_EDITOR}], activeTabId: TabType.CODE_EDITOR },
-    "3": { tabs: [{id: "3", type: TabType.CONSOLE}], activeTabId: TabType.CONSOLE },
-  }) 
+    "1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }, { id: "1.1", type: TabType.DUMMY }], activeTabId: TabType.WHITEBOARD },
+    "2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: TabType.CODE_EDITOR },
+    "3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: TabType.CONSOLE },
+  })
 
   // Holds the collapse/expand arrow direction for tabs
   // const [tabDirection, setTabDirection] = createSignal<{ [key: string]: PaneProps["direction"] }>({ whiteboard: "left", code: "up", console: "up" })
-  
+
   // drag drop related variables
   const [isDragging, setIsDragging] = createSignal(false)
   const [draggedItem, setDraggedItem] = createSignal<DraggedItem>(null)
-  const [dropPoint, setDropPoint] = createSignal<DropPoint>(null)
+  const [dropTarget, setDropTarget] = createSignal<DropTarget>(null)
   // TODO: add cleanup for els that are no longer in dom
   let lastDropTargetEl: HTMLElement | null = null
 
@@ -1251,11 +1233,11 @@ export const Workspace = () => {
     .filter((collaborator) => !collaboratorsSearchText() ? true : (collaborator.name || '-').toLocaleLowerCase().includes(collaboratorsSearchText().toLocaleLowerCase()))
     : []
   )
-  const tabInfoMap = createMemo<{[tabId: string]: {id: string, paneId: string, tabType: TabType}}>(() => {
+  const tabInfoMap = createMemo<{ [tabId: string]: { id: string, paneId: string, tabType: TabType } }>(() => {
     const x = {}
     for (let paneId of Object.keys(panePropsMap())) {
       for (let tab of panePropsMap()[paneId].tabs) {
-        x[tab.id] = {id: tab.id, paneId, tabType: tab.type}
+        x[tab.id] = { id: tab.id, paneId, tabType: tab.type }
       }
     }
     return x
@@ -1348,7 +1330,7 @@ export const Workspace = () => {
     setTimeout(() => setIsNewLinkGenerated(false), 2000)
     setPageUrl()
   }
-  
+
   // splitter events
   const onSplitterDragEnd = (splitterId: string, sizes: number[]) => {
     console.log(splitterId, sizes)
@@ -1374,7 +1356,7 @@ export const Workspace = () => {
   }
 
   const togglePaneExpand = (paneId: string) => {
-    
+
   }
 
   const onPaneDragStart = (event: MouseEvent, paneId: string, tabId?: string) => {
@@ -1382,7 +1364,7 @@ export const Workspace = () => {
     batch(() => {
       document.body.classList.add('dragging')
       setIsDragging(true)
-      setDraggedItem({type: tabId ? "tab" : "pane", paneId, tabId})
+      setDraggedItem({ type: tabId ? "tab" : "pane", paneId, tabId })
     })
   }
 
@@ -1392,12 +1374,12 @@ export const Workspace = () => {
       document.body.classList.remove('dragging')
       setIsDragging(false)
       setDraggedItem(null)
-      setDropPoint(null)
+      setDropTarget(null)
 
       // TODO: Update layout
     })
   }
-  
+
   const onPaneDrag = (e: MouseEvent) => {
     // console.log('onPaneDrag', e)
 
@@ -1407,12 +1389,13 @@ export const Workspace = () => {
     const dragCursorEl: HTMLDivElement = document.querySelector(".drag-cursor")
     if (dragCursorEl) {
       const width = dragCursorEl.getBoundingClientRect().width
-      dragCursorEl.style.left = (point[0] - width/2) + "px"
+      dragCursorEl.style.left = (point[0] - width / 2) + "px"
       dragCursorEl.style.top = (point[1] + 5) + "px"
     }
 
     // Calculate drop tagets
-    let dropBoundary = getRectCoordinatesFromEl(document.querySelector(".drop-boundary"))
+    let dropBoundaryEl: HTMLElement = document.querySelector(".drop-boundary")
+    let dropBoundary = getRectCoordinatesFromEl(dropBoundaryEl)
     const offset = offsetRect(dropBoundary, new Array(4).fill(SPLITTER_MIN_SIZE / 4))
 
     const x = partInConcentricRect(dropBoundary, offset, point)
@@ -1421,107 +1404,226 @@ export const Workspace = () => {
       return
     }
     else if (x !== "in") {
-      let style = ""
+      let [outerClass, innerClass] = ["border border-solid border-blue-600 rounded-lg", "bg-blue-300 opacity-30"]
+      let [outerStyle, innerStyle] = ["", ""]
+      const box = dropBoundaryEl.getBoundingClientRect()
       switch (x) {
         case "top": {
-          style = `top: 0; width: 100%; height: 25%;`
+          outerStyle = `top: ${box.top}px; left: ${box.left}px; width: ${box.width}px; height: ${box.height / 4}px;`
           break
         }
         case "right": {
-          style = `right: 0; width: 25%; height:100%;`
+          outerStyle = `top: ${box.top}px; right: ${window.innerWidth - box.right}px; width: ${box.width / 4}px; height: ${box.height}px;`
           break
         }
         case "bottom": {
-          style = `bottom: 0; width: 100%; height:25%;`
+          outerStyle = `bottom: ${window.innerHeight - box.bottom}px; right: ${window.innerWidth - box.right}px; width: ${box.width}px; height: ${box.height / 4}px;`
           break
         }
         case "left": {
-          style = `left: 0; width: 25%; height:100%;`
+          outerStyle = `top: ${box.top}px; left: ${box.left}px; width: ${box.width / 4}px; height: ${box.height}px;`
           break
         }
       }
-      setDropPoint({type: "global", style})
-      // console.log(dropPoint())
+      setDropTarget({
+        el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+        config: {},
+      })
       return
     }
 
-    // Check if in headers
-    const tabHeaderGroups: HTMLElement[] = Array.from(document.querySelectorAll(".pane .tab-header-group"))
-    const tabHeaders: HTMLElement[] = Array.from(document.querySelectorAll(".pane .tab-header"))
+    // Function that checks if the cursor is in the pane's header
+    const _checkInHeader = (node: SplitNodeElement, parentNode: SplitNodeSplitter) => {
+      const paneId = node.paneId;
 
-    for (let headerGroup of tabHeaderGroups) {
-      const rect = getRectCoordinatesFromEl(headerGroup)
-      const paneId = headerGroup.dataset.paneId;
-      const painOrientation = headerGroup.dataset.painOrientation
+      const headerGroup: HTMLElement = document.querySelector(`.pane [data-pane-id="${paneId}"].tab-header-group`)
+      const headers: HTMLElement[] = Array.from(headerGroup.querySelectorAll(`.tab-header`))
 
-      if (inRect(rect, point)) {
-        for (let header of tabHeaders) {
-          const rect2 = getRectCoordinatesFromEl(header)
-          const tabHeaderIndex = +header.dataset.tabHeaderIndex
-          if (inRect(rect2, point)) {
-            const offset = painOrientation ? [0, 0, (rect2[2][1] - rect2[1][1])/2, 0]: [0, (rect2[1][0] - rect2[0][0])/2, 0, 0]
-            const _offsetRect = offsetRect(rect2, offset)
-            if (inRect(_offsetRect, point)) {
-              setDropPoint({type: "paneHeader", paneId, tabIndex: tabHeaderIndex})
-              console.log(dropPoint())
+      const groupRect = getRectCoordinatesFromEl(headerGroup)
+      const paneOrientation = headerGroup.dataset.paneOrientation
+
+      let [outerClass, innerClass] = ["", "border border-solid border-blue-600 bg-blue-600 rounded-sm"]
+      let [outerStyle, innerStyle] = [`${paneOrientation ? 'padding-left: 6px; padding-right: 6px; height: 1px;' : 'padding-top: 6px; padding-bottom: 6px; width: 1px;'}`, ""]
+
+      if (inRect(groupRect, point)) {
+        if (!paneOrientation) {
+          const __beginingOuterStyle = (header: HTMLElement) => {
+            const box = header.getBoundingClientRect()
+            const style = `top: ${box.top}px; left: ${box.left}px; height: ${box.height}px;`
+            return style
+          }
+
+          const __endOuterStyle = (header: HTMLElement) => {
+            const box = header.getBoundingClientRect()
+            const style = `top: ${box.top}px; right: ${window.innerWidth - box.right}px; height: ${box.height}px;`
+            return style
+          }
+        
+          for (let [index, header] of headers.entries()) {
+            const box = header.getBoundingClientRect()
+            if (point[0] > (box.x + box.width)) {
+              continue
+            }
+
+            if (point[0] < (box.x + (box.width / 2))) {
+              // Drop at beginning of header
+              outerStyle += __beginingOuterStyle(header)
+              setDropTarget({
+                el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+                config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+              })
+              console.log(dropTarget())
             }
             else {
-              setDropPoint({type: "paneHeader", paneId, tabIndex: tabHeaderIndex + 1})
-              // console.log(dropPoint())
+              // Drop at beginning of next header
+              outerStyle += ((index + 1 < headers.length) ? __beginingOuterStyle(headers[index + 1]) : __endOuterStyle(headers[headers.length - 1]))
+              setDropTarget({
+                el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+                config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex + 1}
+              })
+              console.log(dropTarget())
             }
-            return
+            return true
           }
+
+          // drop at index=length of the header group
+          outerStyle += __endOuterStyle(headers[headers.length - 1])
+          setDropTarget({
+            el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+            config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+          })
+          console.log(dropTarget())
+          return true
         }
-        setDropPoint({type: "paneHeader", paneId, tabIndex: panePropsMap()[paneId].tabs.length})
-        // console.log(dropPoint())
-        return
+        
+        // Pane oriented
+        const __beginingOuterStyle = (header: HTMLElement) => {
+          const box = header.getBoundingClientRect()
+          const style = `top: ${box.top}px; left: ${box.left}px; width: ${box.width}px;`
+          return style
+        }
+
+        const __endOuterStyle = (header: HTMLElement) => {
+          const box = header.getBoundingClientRect()
+          const style = `bottom: ${window.innerHeight - box.bottom}px; left: ${box.left}px; width: ${box.width}px;`
+          return style
+        }
+      
+        for (let [index, header] of headers.entries()) {
+          const box = header.getBoundingClientRect()
+          if (point[1] > (box.y + box.height)) {
+            continue
+          }
+
+          if (point[1] < (box.y + (box.height / 2))) {
+            // Drop at beginning of header
+            outerStyle +=  __beginingOuterStyle(header)
+            setDropTarget({
+              el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+              config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+            })
+            console.log(dropTarget())
+          }
+          else {
+            // Drop at beginning of next header
+            outerStyle += ((index + 1 < headers.length) ? __beginingOuterStyle(headers[index + 1]) : __endOuterStyle(headers[headers.length - 1]))
+            setDropTarget({
+              el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+              config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+            })
+            console.log(dropTarget())
+          }
+          return true
+        }
+      
+        // drop at index=length of the header group
+        outerStyle += __endOuterStyle(headers[headers.length - 1])
+        setDropTarget({
+          el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+          config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+        })
+        console.log(dropTarget())
+        return true
       }
+
+      return false;
     }
 
-    // Check if in tab body
-    const tabBody: HTMLElement[] = Array.from(document.querySelectorAll(".pane .pane-body"))
-    for (let body of tabBody) {
-      const paneId = body.dataset.paneId;
+    const _checkInBody = (node: SplitNodeElement, parent: SplitNodeSplitter) => {
+      const paneId = node.paneId
+      const body: HTMLElement = document.querySelector(`.pane [data-pane-id="${paneId}"].pane-body`)
+
       const outerRect = getRectCoordinatesFromEl(body)
       const width = outerRect[1][0] - outerRect[0][0]
       const height = outerRect[2][1] - outerRect[1][1]
-      const innerRect = offsetRect(outerRect, [height/4, width/4, height/4, width/4])
+      const innerRect = offsetRect(outerRect, [height / 4, width / 4, height / 4, width / 4])
       const x = partInConcentricRect(outerRect, innerRect, point)
       if (x === "out") {
-        continue
+        return false;
       }
-      let style = ""
+
+      let [outerClass, innerClass] = ["border border-solid border-blue-600 rounded-lg", "bg-blue-300 opacity-30"]
+      let [outerStyle, innerStyle] = ["", ""]
+      const pane = document.querySelector(`.pane[data-pane-id="${node.paneId}"]`)
+      const box = pane.getBoundingClientRect()
+
       switch (x) {
         case "top": {
-          style = "top: 0; width: 100%; height: 50%;"
+          outerStyle = `top: ${box.top}px; left: ${box.left}px; width: ${box.width}px; height: ${box.height / 2}px;`
           break
         }
         case "right": {
-          style = "right: 0; width: 50%; height: 100%;"
+          outerStyle = `top: ${box.top}px; right: ${window.innerWidth - box.right}px; width: ${box.width / 2}px; height: ${box.height}px;`
           break
         }
         case "bottom": {
-          style = "bottom: 0; width: 100%; height: 50%;"
+          outerStyle = `bottom: ${window.innerHeight - box.bottom}px; right: ${window.innerWidth - box.right}px; width: ${box.width}px; height: ${box.height / 2}px;`
           break
         }
         case "left": {
-          style = "bottom: 0; width: 50%; height: 100%;"
+          outerStyle = `top: ${box.top}px; left: ${box.left}px; width: ${box.width / 2}px; height: ${box.height}px;`
           break
         }
         case "in": {
-          style = "width: 100%; height: 100%"
-          break
+          outerStyle = `top: ${box.top}px; left: ${box.left}px; width: ${box.width}px; height: ${box.height}px;`
         }
       }
-      setDropPoint({type: "paneBody", paneId, style})
-      // console.log(dropPoint())
-      return
+      setDropTarget({
+        el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+        config: {}
+      })
+      console.log(dropTarget())
+      return true
     }
-  
-    // Missed some parts, most likely the gutter. In this case keep the last known droppoint as i
-    // console.log('No match found, Keeping the last known drop point', dropPoint())
+
+    // Loop through split nodes and check if the cursor is on them
+    const _recursive = (node: SplitNode, parent?: SplitNodeSplitter) => {
+      if (node.type === "splitter") {
+        for (let child of node.children) {
+          if (_recursive(child, node)) {
+            return true
+          }
+        }
+        return false
+      }
+
+      if (_checkInHeader(node, parent)) {
+        return true
+      }
+      if (_checkInBody(node, parent)) {
+        return true
+      }
+      return false
+    }
+
+    const found = _recursive(splitNodes())
+
+    if (!found) {
+      // If not found inside _recursive, then missed some parts (most likely the gutter). In this case keep the last known droppoint as i
+      console.log('No match found, Keeping the last known drop point', dropTarget())
+    }
   }
-  
+
   // Console events
   const runCode = async () => {
     setIsAtBottomOfConsole(true)
@@ -1599,10 +1701,16 @@ export const Workspace = () => {
         </Match> */}
         <Match when={pageLoadApiInfo().state === ApiState.LOADED}>
           {/* Ideally we should not event have the onMouseMove listener when not dragging */}
-          <div class={`h-full flex flex-col app-bg relative`} onMouseMove={(e) => isDragging() ? onPaneDrag(e) : null} onMouseUp={(e) => isDragging() ? onPaneDragEnd(e) : null}>
+          <div class={`h-full flex flex-col app-bg relative overflow-hidden`} onMouseMove={(e) => isDragging() ? onPaneDrag(e) : null} onMouseUp={(e) => isDragging() ? onPaneDragEnd(e) : null}>
             {/* A overlay added when dragging is on to disable css changes becuase of hover (and other reasons) when draggin is on */}
             <Show when={isDragging()}>
               <div class={`absolute w-full h-full`} style="z-index: 1000; background: transparent"></div>
+            </Show>
+            {/* drop target */}
+            <Show when={isDragging() && dropTarget()}>
+              <div class={`drop-target absolute ${dropTarget().el.outer.class || ''}`} style={`z-index: 1000; ${dropTarget().el.outer.style || ''}`}>
+                <div class={`w-full h-full ${dropTarget().el.inner.class || ''}`} style={dropTarget().el.inner.style || ''}></div>
+              </div>
             </Show>
             {/* Cursor ui while dragging */}
             <Show when={isDragging()}>
@@ -1614,7 +1722,7 @@ export const Workspace = () => {
                     <div >{TABS_METADATA[tabInfoMap()[(draggedItem() as any).tabId].tabType].icon}</div>
                     <div class="">{TABS_METADATA[tabInfoMap()[(draggedItem() as any).tabId].tabType].title}</div>
                   </Show>
-                  
+
                 </div>
               </div>
             </Show>
