@@ -125,7 +125,9 @@ type DraggedItemTab = {
 type DraggedItem = DraggedItemPane | DraggedItemTab
 type DropTarget = {
   el: { outer: { class: string; style: string }, inner: { class: string; style: string } },
-  config: any
+  to?: {type: "1", direction: SplitPaneProps["direction"], insert: "before" | "after"} |
+      {type: "2", paneId: string, index: number} |
+      {type: "3", paneId: string, direction: SplitPaneProps["direction"], insert: "before" | "after"}
 }
 
 // Constants
@@ -1080,22 +1082,23 @@ export const Workspace = () => {
               tabs={panePropsMap()[item.paneId].tabs.map((x) => ({ ...TABS_METADATA[x.type], icon: TABS_METADATA[x.type].icon(), ...x }))}
               activeTabId={panePropsMap()[item.paneId].activeTabId}
               // dropIndex={dropPoint()?.type === "paneHeader" && (dropPoint() as any).paneId === item.paneId ? (dropPoint() as any).tabIndex : undefined}
+              onTabChange={(tabId) => onTabChange(item.paneId, tabId)}
               toggleFullScreenMode={() => togglePaneFullScreen(item.paneId)}
               toggleExpand={() => togglePaneExpand(item.paneId)}
               onDragStart={(e, tabId) => onPaneDragStart(e, item.paneId, tabId)}
             >
               <Switch>
-                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.WHITEBOARD}>
+                <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.WHITEBOARD}>
                   {whiteboardJsx}
                 </Match>
-                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CODE_EDITOR}>
+                <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.CODE_EDITOR}>
                   {codeJsx}
                 </Match>
-                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CONSOLE}>
+                <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.CONSOLE}>
                   {consoleJsx}
                 </Match>
-                <Match when={panePropsMap()[item.paneId].activeTabId === TabType.CONSOLE}>
-                  <div class="w-full h-full">Dummy console</div>
+                <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.DUMMY}>
+                  <div class="w-full h-full bg-white">Dummy</div>
                 </Match>
               </Switch>
             </Pane>
@@ -1193,9 +1196,9 @@ export const Workspace = () => {
 
   // This holds the props for all panes
   const [panePropsMap, setPanePropsMap] = createSignal<PanePropsMap>({
-    "1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }, { id: "1.1", type: TabType.DUMMY }], activeTabId: TabType.WHITEBOARD },
-    "2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: TabType.CODE_EDITOR },
-    "3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: TabType.CONSOLE },
+    "1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }, { id: "1.1", type: TabType.DUMMY }], activeTabId: "1" },
+    "2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: "2" },
+    "3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: "3" },
   })
 
   // Holds the collapse/expand arrow direction for tabs
@@ -1343,6 +1346,11 @@ export const Workspace = () => {
   }
 
   // Pane events
+  const onTabChange = (paneId: string, tabId: string) => {
+    panePropsMap()[paneId].activeTabId = tabId
+    setPanePropsMap({...panePropsMap()})
+  }
+
   const togglePaneFullScreen = (paneId: string) => {
     console.log('togglePaneFullScreen', paneId)
     if (isNullOrUndefined(paneInFullScreen())) {
@@ -1368,15 +1376,311 @@ export const Workspace = () => {
     })
   }
 
+  const findSplitter = (node: SplitNodeSplitter, splitterId: string): SplitNodeSplitter => {
+    if (node.splitterId === splitterId) {
+      return node
+    }
+
+    for (let childNode of node.children) {
+      if (childNode.type === "splitter") {
+        const x = findSplitter(childNode, splitterId)
+        if (x) {
+          return x
+        }
+      }
+    }
+  }
+
+  const findParentSplitter = (node: SplitNodeSplitter, splitterId: string): SplitNodeSplitter => {
+    for (let childNode of node.children) {
+      if (childNode.type === "splitter") {
+        if (childNode.splitterId === splitterId) {
+          return node
+        }
+        const x = findParentSplitter(childNode, splitterId)
+        if (x) {
+          return x
+        }
+      }
+    }
+  }
+
+  const findPaneSplitter = (node: SplitNodeSplitter, paneId: string): SplitNodeSplitter => { 
+    for (let childNode of node.children) {
+      if (childNode.type === "pane" && childNode.paneId === paneId) {
+        return node
+      }
+      if (childNode.type === "splitter") {
+        const x = findPaneSplitter(childNode, paneId)
+        if (x) {
+          return x
+        }
+      }
+    }
+  }
+
+  const cleanupNodes = (_splitNodes: SplitNode, _splitterPropsMap: SplitterPropsMap): SplitNode => {
+    const _removeSingleChild = (node: SplitNode): SplitNode => {
+      if (node.type === "pane") {
+        return node
+      }
+  
+      // Cleanup child nodes
+      for (let [index, childNode] of node.children.entries()) {
+        if (childNode.type === "splitter") {
+          node.children[index] = _removeSingleChild(childNode)
+        }  
+      }
+  
+      // Clean up parent node
+      if (node.children.length === 1) {
+        delete _splitterPropsMap[node.splitterId]
+        return node.children[0]
+      }
+
+      return node
+    }
+
+    const _removeRedundantSplitters = (node: SplitNode) => {
+      if (node.type === "pane") {
+        return
+      }
+
+      for (let i=0; i<node.children.length;) {
+        const childNode = node.children[i];
+        if (childNode.type === "splitter") {
+          _removeRedundantSplitters(childNode)
+          if (_splitterPropsMap[childNode.splitterId].direction === _splitterPropsMap[node.splitterId].direction) {
+            node.children.splice(i, 1, ...childNode.children)
+            _splitterPropsMap[node.splitterId].sizes.splice(i, 1, ..._splitterPropsMap[childNode.splitterId].sizes.map((x) => (x/100)*_splitterPropsMap[node.splitterId].sizes[i]))
+            _splitterPropsMap[node.splitterId].storedSizes.splice(i, 1, ..._splitterPropsMap[childNode.splitterId].storedSizes.map((x) => (x/100)*_splitterPropsMap[node.splitterId].storedSizes[i]))
+            delete _splitterPropsMap[childNode.splitterId]
+            i += (childNode.children.length - 1)
+          }
+        }
+        i += 1;
+      }
+    }
+   
+    _splitNodes = _removeSingleChild(_splitNodes) as SplitNodeSplitter
+    _removeRedundantSplitters(_splitNodes)
+    return _splitNodes
+  }
+
+  const newLayout = () => {
+    const to = dropTarget().to
+    const _draggedItem = draggedItem()
+
+    let _splitNodes = splitNodes()
+    let _splitterPropsMap = splitterPropsMap()
+    let _panePropsMap = panePropsMap()
+
+    if (!to) {
+      if (_draggedItem.type === "tab") {
+        _panePropsMap[_draggedItem.paneId].activeTabId = _draggedItem.tabId
+        setPanePropsMap({..._panePropsMap})
+      }
+      return
+    }
+
+    // splitNodes()
+    // splitterPropsMap()
+    // panePropsMap()
+    // splitterRefs
+
+    switch (to.type) {
+      case "1": {
+        let newNode: SplitNodeElement
+        // Delete dragged item from its old position
+        if (_draggedItem.type === "tab" && _panePropsMap[_draggedItem.paneId].tabs.length > 1) {
+          let paneProps = _panePropsMap[_draggedItem.paneId]
+          paneProps.tabs = paneProps.tabs.filter((x) => x.id !== _draggedItem.tabId)
+          if (paneProps.activeTabId === _draggedItem.tabId) {
+            paneProps.activeTabId = paneProps.tabs[paneProps.tabs.length - 1].id
+          }
+          newNode = {
+            type: "pane", paneId: crypto.randomUUID()
+          }
+          _panePropsMap[newNode.paneId] = {
+            tabs: [{id: _draggedItem.tabId, type: tabInfoMap()[_draggedItem.tabId].tabType}],
+            activeTabId: _draggedItem.tabId
+          }
+        }
+        else {
+          // Remove the pane from parent splitter
+          const parentNode = findPaneSplitter(_splitNodes, _draggedItem.paneId)
+          const index = parentNode.children.findIndex((x) => x.type === "pane" && x.paneId === _draggedItem.paneId)
+          newNode = parentNode.children.splice(index, 1)[0] as SplitNodeElement
+          // Redistribute the sizes
+          const {sizes, storedSizes} = _splitterPropsMap[parentNode.splitterId]
+          const [size] = sizes.splice(index, 1)
+          const [storedSize] = storedSizes.splice(index, 1)
+          for (let i=0; i<sizes.length; i++) {
+            sizes[i] += (size / sizes.length)
+            storedSizes[i] += (storedSize / sizes.length)
+          }
+          // // cleanup parent splitter
+          // if (parentNode.children.length === 1) {
+          //   const grandParentNode = findParentSplitter(_splitNodes, parentNode.splitterId)
+          //   if (grandParentNode) {
+          //     // remove parnet spltter and attach the node directly to grandparent
+          //     const index = grandParentNode.children.findIndex((x) => x.type === "splitter" && x.splitterId === parentNode.splitterId)
+          //     grandParentNode.children[index] = parentNode.children[0]
+          //     delete _splitterPropsMap[parentNode.splitterId]
+          //   }
+          //   else {
+          //     _splitNodes = parentNode.children[0] as SplitNodeSplitter  // TODO: Assuming the child is a splitter
+          //     delete _splitterPropsMap[parentNode.splitterId]
+          //   }
+          // }
+        }
+
+        // Add dragged item to ites new position
+        _splitNodes = {
+          type: "splitter",
+          splitterId: crypto.randomUUID(),
+          children: (to.insert === "before" ? [newNode, _splitNodes] : [_splitNodes, newNode])
+        }
+        _splitterPropsMap[_splitNodes.splitterId] = {
+          direction: to.direction,
+          sizes: (to.insert === "before" ? [25, 75] : [75, 25]),
+          storedSizes: (to.insert === "before" ? [25, 75] : [75, 25])
+        }
+        break
+      }
+      case "2": {
+        const tabsToAdd = []
+        // Delete dragged item from its old position
+        if (_draggedItem.type === "tab" && _panePropsMap[_draggedItem.paneId].tabs.length > 1) {
+          tabsToAdd.push({id: _draggedItem.tabId, type: tabInfoMap()[_draggedItem.tabId].tabType})
+          _panePropsMap[to.paneId].activeTabId = _draggedItem.tabId
+
+          let paneProps = _panePropsMap[_draggedItem.paneId]
+          paneProps.tabs = paneProps.tabs.filter((x) => x.id !== _draggedItem.tabId)
+          if (paneProps.activeTabId === _draggedItem.tabId) {
+            paneProps.activeTabId = paneProps.tabs[paneProps.tabs.length - 1].id
+          }
+        }
+        else {
+          tabsToAdd.push(..._panePropsMap[_draggedItem.paneId].tabs)
+          _panePropsMap[to.paneId].activeTabId = _panePropsMap[_draggedItem.paneId].activeTabId
+          delete _panePropsMap[_draggedItem.paneId]
+
+          // Remove the pane from parent splitter and add it some place else
+          const parentNode = findPaneSplitter(_splitNodes, _draggedItem.paneId)
+          const index = parentNode.children.findIndex((x) => x.type === "pane" && x.paneId === _draggedItem.paneId)
+          parentNode.children.splice(index, 1)[0] as SplitNodeElement
+          // Redistribute the sizes
+          const {sizes, storedSizes} = _splitterPropsMap[parentNode.splitterId]
+          const [size] = sizes.splice(index, 1)
+          const [storedSize] = storedSizes.splice(index, 1)
+          for (let i=0; i<sizes.length; i++) {
+            sizes[i] += (size / sizes.length)
+            storedSizes[i] += (storedSize / sizes.length)
+          }
+          // // cleanup parent splitter
+          // if (parentNode.children.length === 1) {
+          //   const grandParentNode = findParentSplitter(_splitNodes, parentNode.splitterId)
+          //   if (grandParentNode) {
+          //     // remove parnet spltter and attach the node directly to grandparent
+          //     const index = grandParentNode.children.findIndex((x) => x.type === "splitter" && x.splitterId === parentNode.splitterId)
+          //     grandParentNode.children[index] = parentNode.children[0]
+          //     delete _splitterPropsMap[parentNode.splitterId]
+          //   }
+          //   else {
+          //     _splitNodes = parentNode.children[0] as SplitNodeSplitter  // TODO: Assuming the child is a splitter
+          //     delete _splitterPropsMap[parentNode.splitterId]
+          //   }
+          // }
+        }
+
+        // Add dragged item to its new position
+        _panePropsMap[to.paneId].tabs.splice(to.index, 0, ...tabsToAdd)
+        break
+      }
+      case "3": {
+        let newNode: SplitNodeElement
+        // Delete dragged item from its old position
+        if (_draggedItem.type === "tab" && _panePropsMap[_draggedItem.paneId].tabs.length > 1) {
+          let paneProps = _panePropsMap[_draggedItem.paneId]
+          paneProps.tabs = paneProps.tabs.filter((x) => x.id !== _draggedItem.tabId)
+          if (paneProps.activeTabId === _draggedItem.tabId) {
+            paneProps.activeTabId = paneProps.tabs[paneProps.tabs.length - 1].id
+          }
+          newNode = {
+            type: "pane", paneId: crypto.randomUUID()
+          }
+          _panePropsMap[newNode.paneId] = {
+            tabs: [{id: _draggedItem.tabId, type: tabInfoMap()[_draggedItem.tabId].tabType}],
+            activeTabId: _draggedItem.tabId
+          }
+        }
+        else {
+          // Remove the pane from parent splitter
+          const parentNode = findPaneSplitter(_splitNodes, _draggedItem.paneId)
+          const index = parentNode.children.findIndex((x) => x.type === "pane" && x.paneId === _draggedItem.paneId)
+          newNode = parentNode.children.splice(index, 1)[0] as SplitNodeElement
+          // Redistribute the sizes
+          const {sizes, storedSizes} = _splitterPropsMap[parentNode.splitterId]
+          const [size] = sizes.splice(index, 1)
+          const [storedSize] = storedSizes.splice(index, 1)
+          for (let i=0; i<sizes.length; i++) {
+            sizes[i] += (size / sizes.length)
+            storedSizes[i] += (storedSize / sizes.length)
+          }
+          // // cleanup parent splitter
+          // if (parentNode.children.length === 1) {
+          //   const grandParentNode = findParentSplitter(_splitNodes, parentNode.splitterId)
+          //   if (grandParentNode) {
+          //     // remove parnet spltter and attach the node directly to grandparent
+          //     const index = grandParentNode.children.findIndex((x) => x.type === "splitter" && x.splitterId === parentNode.splitterId)
+          //     grandParentNode.children[index] = parentNode.children[0]
+          //     delete _splitterPropsMap[parentNode.splitterId]
+          //   }
+          //   else {
+          //     _splitNodes = parentNode.children[0] as SplitNodeSplitter  // TODO: Assuming the child is a splitter
+          //     delete _splitterPropsMap[parentNode.splitterId]
+          //   }
+          // }
+        }
+
+        // Add dragged item to ites new position
+        const parentNode = findPaneSplitter(_splitNodes, to.paneId)
+        const index = parentNode.children.findIndex((x) => x.type === "pane" && x.paneId === to.paneId)
+        let newSplitter: SplitNodeSplitter = {
+          type: "splitter",
+          splitterId: crypto.randomUUID(),
+          children: (to.insert === "before" ? [newNode, parentNode.children[index]] : [parentNode.children[index], newNode])
+        }
+        _splitterPropsMap[newSplitter.splitterId] = {
+          direction: to.direction,
+          sizes: [50, 50],
+          storedSizes: [50, 50]
+        }
+        parentNode.children[index] = newSplitter
+        break
+      }
+    }
+
+    _splitNodes = cleanupNodes(_splitNodes, _splitterPropsMap) as any
+
+    console.log('_splitNodes', _splitNodes)
+    console.log('_splitterPropsMap', _splitterPropsMap)
+    console.log('_panePropsMap', _panePropsMap)
+    setSplitNodes({..._splitNodes})
+    setSplitterPropsMap({..._splitterPropsMap})
+    setPanePropsMap({..._panePropsMap})
+  }
+
   const onPaneDragEnd = (e: MouseEvent) => {
     console.log('onPaneDragEnd', e)
     batch(() => {
+      newLayout()
+
       document.body.classList.remove('dragging')
       setIsDragging(false)
       setDraggedItem(null)
       setDropTarget(null)
-
-      // TODO: Update layout
     })
   }
 
@@ -1407,6 +1711,16 @@ export const Workspace = () => {
       let [outerClass, innerClass] = ["border border-solid border-blue-600 rounded-lg", "bg-blue-300 opacity-30"]
       let [outerStyle, innerStyle] = ["", ""]
       const box = dropBoundaryEl.getBoundingClientRect()
+
+      // check edge case
+      if ((draggedItem().type === "pane" || panePropsMap()[draggedItem().paneId].tabs.length === 1) && splitNodes().children.length === 1) {
+        outerStyle = `top: ${box.top}px; left: ${box.left}px; width: ${box.width}px; height: ${box.height}px;`, 
+        setDropTarget({
+          el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+        })
+        return
+      }
+
       switch (x) {
         case "top": {
           outerStyle = `top: ${box.top}px; left: ${box.left}px; width: ${box.width}px; height: ${box.height / 4}px;`
@@ -1427,7 +1741,7 @@ export const Workspace = () => {
       }
       setDropTarget({
         el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
-        config: {},
+        to: {type: "1", direction: x === "top" || x === "bottom" ? "vertical" : "horizontal", insert: x === "top" || x === "left" ? "before" : "after" },
       })
       return
     }
@@ -1470,7 +1784,7 @@ export const Workspace = () => {
               outerStyle += __beginingOuterStyle(header)
               setDropTarget({
                 el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
-                config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+                to: {type: "2", paneId, index}
               })
               console.log(dropTarget())
             }
@@ -1479,7 +1793,7 @@ export const Workspace = () => {
               outerStyle += ((index + 1 < headers.length) ? __beginingOuterStyle(headers[index + 1]) : __endOuterStyle(headers[headers.length - 1]))
               setDropTarget({
                 el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
-                config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex + 1}
+                to: {type: "2", paneId, index: index + 1}
               })
               console.log(dropTarget())
             }
@@ -1490,7 +1804,7 @@ export const Workspace = () => {
           outerStyle += __endOuterStyle(headers[headers.length - 1])
           setDropTarget({
             el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
-            config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+            to: {type: "2", paneId, index: headers.length}
           })
           console.log(dropTarget())
           return true
@@ -1520,7 +1834,7 @@ export const Workspace = () => {
             outerStyle +=  __beginingOuterStyle(header)
             setDropTarget({
               el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
-              config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+              to: {type: "2", paneId, index}
             })
             console.log(dropTarget())
           }
@@ -1529,7 +1843,7 @@ export const Workspace = () => {
             outerStyle += ((index + 1 < headers.length) ? __beginingOuterStyle(headers[index + 1]) : __endOuterStyle(headers[headers.length - 1]))
             setDropTarget({
               el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
-              config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+              to: {type: "2", paneId, index: index + 1}
             })
             console.log(dropTarget())
           }
@@ -1540,7 +1854,7 @@ export const Workspace = () => {
         outerStyle += __endOuterStyle(headers[headers.length - 1])
         setDropTarget({
           el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
-          config: {} // {type: "paneHeader", paneId, tabIndex: tabHeaderIndex}
+          to: {type: "2", paneId, index: headers.length}
         })
         console.log(dropTarget())
         return true
@@ -1590,7 +1904,9 @@ export const Workspace = () => {
       }
       setDropTarget({
         el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
-        config: {}
+        to: x !== "in" ? 
+          {type: "3", paneId, direction: x === "top" || x === "bottom" ? "vertical" : "horizontal", insert: x === "top" || x === "left" ? "before" : "after" }
+          : {type: "2", paneId, index: panePropsMap()[paneId].tabs.length},
       })
       console.log(dropTarget())
       return true
@@ -1607,13 +1923,34 @@ export const Workspace = () => {
         return false
       }
 
-      if (_checkInHeader(node, parent)) {
-        return true
+      let found = _checkInHeader(node, parent)
+      if (!found) {
+        found = _checkInBody(node, parent)
       }
-      if (_checkInBody(node, parent)) {
-        return true
+      
+      // edge case
+      if (found) {
+        let item = draggedItem()
+        let cond = (item.type === "tab" && node.paneId === item.paneId && panePropsMap()[item.paneId].tabs.length === 1) 
+          || 
+        (item.type === "pane" && item.paneId === node.paneId)
+        if (cond) {
+          // reverse old operations
+          // only 1 drop point possible
+          const pane = document.querySelector(`.pane[data-pane-id="${node.paneId}"]`)
+          const box = pane.getBoundingClientRect()
+          let [outerClass, innerClass] = ["border border-solid border-blue-600 rounded-lg", "bg-blue-300 opacity-30"]
+          let [outerStyle, innerStyle] = [
+            `top: ${box.top}px; left: ${box.left}px; width: ${box.width}px; height: ${box.height}px;`, 
+            ""
+          ]
+          setDropTarget({
+            el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
+            // to: {}
+          })
+        }
       }
-      return false
+      return found
     }
 
     const found = _recursive(splitNodes())
@@ -1717,7 +2054,9 @@ export const Workspace = () => {
               <div class={`drag-cursor absolute`} style="z-index: 1000;">
                 <div class="flex items-center gap-1 text-sm flex-row px-2 py-1 bg-white rounded-sm border border-gray-300">
                   <Show when={draggedItem().type === "tab"} fallback={<div class="text-xs">
-                    {TABS_METADATA[panePropsMap()[draggedItem().paneId].activeTabId].title} and {panePropsMap()[draggedItem().paneId].tabs.length} tabs
+                    {TABS_METADATA[
+                      tabInfoMap()[panePropsMap()[draggedItem().paneId].activeTabId].tabType
+                    ].title} and {panePropsMap()[draggedItem().paneId].tabs.length} tabs
                   </div>}>
                     <div >{TABS_METADATA[tabInfoMap()[(draggedItem() as any).tabId].tabType].icon}</div>
                     <div class="">{TABS_METADATA[tabInfoMap()[(draggedItem() as any).tabId].tabType].title}</div>

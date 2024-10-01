@@ -29,6 +29,7 @@ export type PaneProps = {
   dropIndex?: number
 
   // events
+  onTabChange: (tabId: string) => void
   toggleFullScreenMode: () => void
   toggleExpand: () => void
   onDragStart: (e: MouseEvent, tabId?: string) => void
@@ -84,6 +85,7 @@ export const Pane = (props: PaneProps) => {
               onMouseUp={(e) => {e.stopPropagation(); upListener(e)}}
               onMouseLeave={(e) => {e.stopPropagation(); upListener(e)}}
               class={"tab-header relative flex items-center cursor-pointer hover:bg-gray-200 " + (props.activeTabId === tab.id ? 'opacity-100 ' : 'opacity-60')} style="border-radius: 5px;"
+              onClick={(e) => props.onTabChange(tab.id)}
             >
               <Show when={props.dropIndex === index()}>
                 <div class={"absolute w-[1px] h-[16px] bg-blue-600"}></div>
