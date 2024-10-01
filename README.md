@@ -1,7 +1,7 @@
 # IDE
 ### 🚀 [Live Demo](https://ide.rahulbadenkal.com)
 
-A real-time collaborative workspace featuring a whiteboard, code editor, and workspace sharing—all in one place!
+A real-time collaborative platform that combines a whiteboard, code editor and workspace sharing for seamless teamwork - all in one place!  
 
 ## 🛠️ Major Releases
 ### v1.0 (In Progress)
