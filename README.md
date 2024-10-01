@@ -11,7 +11,7 @@ This release introduces core features designed to enhance collaboration and work
 #### ✅ Completed Features
 - Basic Layout: Provides the initial structure and user interface.  
 - Code Execution with Streaming: Enables real-time code execution and output streaming.
-- Yjs Integration for Excalidraw Whiteboard + Code mirror edior + other document state: Real-time collaboration using Yjs.
+- Yjs Integration for Excalidraw Whiteboard + Code mirror edior + other workspace state: Real-time collaboration using Yjs.
 - Setup backend server to share data across participants in a workspace.  
 - Workspace Overview: View all workspaces you have access to.  
 - Data Persistence: Stores and retrieves workspace data from the database.  
