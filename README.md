@@ -5,14 +5,13 @@ A real-time collaborative workspace featuring a whiteboard, code editor, and doc
 
 ## 🛠️ Major Releases
 ### v1.0 (In Progress)
-This release introduces core features designed to enhance collaboration and workspace management. Below is the breakdown of the completed and pending items for version 1.0:
-
+This release focuses on building essential tools for seamless real-time collaboration, enabling users to manage workspaces, share documents, and interact through a coding environment and other tools like a shared whiteboard. Below is a detailed list of the completed and pending features for version 1.0:
 
 #### ✅ Completed Features
 - **Basic Layout:** Provides the initial structure and user interface.  
 - **Code Execution with Streaming:** Enables real-time code execution and output streaming.
-- **Collborative environment:** Yjs Integration for Excalidraw Whiteboard + Codemirror editor + other workspace state to allow parallel changes my different participants in real time. 
-- **Setup backend server:** to share data across participants in a workspace.  
+- **Collborative environment:** Yjs Integration for Excalidraw Whiteboard + Codemirror editor + other workspace state to allow parallel changes by different participants in real time. 
+- **Setup backend server:** To share data across participants in a workspace.  
 - **Workspace Overview:** View all workspaces you have access to.
 - **Data Persistence:** Stores and retrieves workspace data from the database. 
 - **Permission Levels:** Turn on/off sharing to give access others access to your workspaces   
