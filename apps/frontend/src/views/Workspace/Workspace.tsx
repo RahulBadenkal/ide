@@ -1068,7 +1068,6 @@ export const Workspace = () => {
           inFullScreenMode={paneInFullScreen() === item.paneId}
           tabs={panePropsMap()[item.paneId].tabs.map((x) => ({ ...TABS_METADATA[x.type], icon: TABS_METADATA[x.type].icon(), ...x }))}
           activeTabId={panePropsMap()[item.paneId].activeTabId}
-          // dropIndex={dropPoint()?.type === "paneHeader" && (dropPoint() as any).paneId === item.paneId ? (dropPoint() as any).tabIndex : undefined}
           onTabChange={(tabId) => onTabChange(item.paneId, tabId)}
           toggleFullScreenMode={() => togglePaneFullScreen(item.paneId)}
           toggleExpand={() => togglePaneExpand(item.paneId)}
