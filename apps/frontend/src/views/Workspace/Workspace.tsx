@@ -1519,20 +1519,6 @@ export const Workspace = () => {
             sizes[i] += (size / sizes.length)
             storedSizes[i] += (storedSize / sizes.length)
           }
-          // // cleanup parent splitter
-          // if (parentNode.children.length === 1) {
-          //   const grandParentNode = findParentSplitter(_splitNodes, parentNode.splitterId)
-          //   if (grandParentNode) {
-          //     // remove parnet spltter and attach the node directly to grandparent
-          //     const index = grandParentNode.children.findIndex((x) => x.type === "splitter" && x.splitterId === parentNode.splitterId)
-          //     grandParentNode.children[index] = parentNode.children[0]
-          //     delete _splitterPropsMap[parentNode.splitterId]
-          //   }
-          //   else {
-          //     _splitNodes = parentNode.children[0] as SplitNodeSplitter  // TODO: Assuming the child is a splitter
-          //     delete _splitterPropsMap[parentNode.splitterId]
-          //   }
-          // }
         }
 
         // Add dragged item to ites new position
@@ -1578,20 +1564,6 @@ export const Workspace = () => {
             sizes[i] += (size / sizes.length)
             storedSizes[i] += (storedSize / sizes.length)
           }
-          // // cleanup parent splitter
-          // if (parentNode.children.length === 1) {
-          //   const grandParentNode = findParentSplitter(_splitNodes, parentNode.splitterId)
-          //   if (grandParentNode) {
-          //     // remove parnet spltter and attach the node directly to grandparent
-          //     const index = grandParentNode.children.findIndex((x) => x.type === "splitter" && x.splitterId === parentNode.splitterId)
-          //     grandParentNode.children[index] = parentNode.children[0]
-          //     delete _splitterPropsMap[parentNode.splitterId]
-          //   }
-          //   else {
-          //     _splitNodes = parentNode.children[0] as SplitNodeSplitter  // TODO: Assuming the child is a splitter
-          //     delete _splitterPropsMap[parentNode.splitterId]
-          //   }
-          // }
         }
 
         // Add dragged item to its new position
@@ -1628,20 +1600,6 @@ export const Workspace = () => {
             sizes[i] += (size / sizes.length)
             storedSizes[i] += (storedSize / sizes.length)
           }
-          // // cleanup parent splitter
-          // if (parentNode.children.length === 1) {
-          //   const grandParentNode = findParentSplitter(_splitNodes, parentNode.splitterId)
-          //   if (grandParentNode) {
-          //     // remove parnet spltter and attach the node directly to grandparent
-          //     const index = grandParentNode.children.findIndex((x) => x.type === "splitter" && x.splitterId === parentNode.splitterId)
-          //     grandParentNode.children[index] = parentNode.children[0]
-          //     delete _splitterPropsMap[parentNode.splitterId]
-          //   }
-          //   else {
-          //     _splitNodes = parentNode.children[0] as SplitNodeSplitter  // TODO: Assuming the child is a splitter
-          //     delete _splitterPropsMap[parentNode.splitterId]
-          //   }
-          // }
         }
 
         // Add dragged item to ites new position
