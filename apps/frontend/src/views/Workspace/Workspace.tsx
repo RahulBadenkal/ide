@@ -609,7 +609,7 @@ export const Workspace = () => {
                       <div class="w-full flex items-center justify-between">
                         <div>
                           <div>{item.name}</div>
-                          <div class="text-xs">{item.owner_name || '-'}</div>
+                          <div class="text-xs">{item.owner_name || '-'} {item.owner === user().id ? '(Me)' : ''}</div>
                         </div>
                         {/* <div>
                         <Show when={item.readOnly}>
