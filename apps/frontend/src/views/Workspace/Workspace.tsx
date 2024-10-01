@@ -338,68 +338,52 @@ export const Workspace = () => {
   }
 
   const enableFullScreen = () => {
+    // Logic ->
+    // Make sizes of all splitter children 0 except for the paths that have the pane which has full screen enabled, make that 100
     const paneId = paneInFullScreen()
 
-    const _markAllEmpty = (node: SplitNode) => {
-      if (node.type === "pane") return
-
-      const nodeProps = splitterPropsMap()[node.splitterId]
-
-      nodeProps.sizes = node.children.map((_) => 0)
-      for (let childNode of node.children) {
-        _markAllEmpty(childNode)
-      }
-    }
-
-    const _recursive = (node: SplitNode) => {
+    const _updateSizes = (node: SplitNode) => {
       if (node.type === "pane") {
         return node.paneId === paneId
       }
 
-      const nodeProps = splitterPropsMap()[node.splitterId]
-
-      // Update sizes for this node and all its children
-      let foundIndex = -1
       for (let [index, childNode] of node.children.entries()) {
-        if (foundIndex >= 0) {
-          _markAllEmpty(childNode)
+        const found = _updateSizes(childNode)
+        if (found) {
+          const nodeProps = splitterPropsMap()[node.splitterId]
+          nodeProps.sizes = nodeProps.sizes.fill(0)
+          nodeProps.sizes[index] = 100
+          return true
         }
-        else {
-          foundIndex = _recursive(childNode) ? index : foundIndex
-        }
-      }
-
-      if (foundIndex >= 0) {
-        nodeProps.sizes = nodeProps.sizes.map((_, index) => index === foundIndex ? 100 : 0)
-        return true
       }
 
       return false
     }
 
-    _recursive(splitNodes())
+    _updateSizes(splitNodes())
     setSplitterPropsMap({ ...splitterPropsMap() })
     for (let splitterId of Object.keys(splitterRefs)) {
-      
       splitterRefs[splitterId].recreate()
     }
+    console.log(splitterPropsMap())
   }
 
   const disableFullScreen = () => {
-    const _restore = (node: SplitNode) => {
+    const _restoreSizes = (node: SplitNode) => {
       if (node.type === "pane") return
 
       const nodeProps = splitterPropsMap()[node.splitterId]
 
-      nodeProps.sizes = nodeProps.storedSizes  // restore sizes
+      nodeProps.sizes = [...nodeProps.storedSizes]  // restore sizes
 
       for (let childNode of node.children) {
-        _restore(childNode)
+        _restoreSizes(childNode)
       }
     }
 
-    _restore(splitNodes())
+    _restoreSizes(splitNodes())
     setSplitterPropsMap({ ...splitterPropsMap() })
+    console.log(splitterPropsMap())
     for (let splitterId of Object.keys(splitterRefs)) {
       splitterRefs[splitterId].recreate()
     }
@@ -1344,7 +1328,7 @@ export const Workspace = () => {
     console.log(splitterId, sizes)
     batch(() => {
       splitterPropsMap()[splitterId].sizes = sizes
-      splitterPropsMap()[splitterId].storedSizes = sizes
+      splitterPropsMap()[splitterId].storedSizes = [...sizes]
       setSplitterPropsMap({ ...splitterPropsMap() })
       // computeTabDirection()
     })
@@ -1464,6 +1448,9 @@ export const Workspace = () => {
             node.children.splice(i, 1, ...childNode.children)
             _splitterPropsMap[node.splitterId].sizes.splice(i, 1, ..._splitterPropsMap[childNode.splitterId].sizes.map((x) => (x/100)*_splitterPropsMap[node.splitterId].sizes[i]))
             _splitterPropsMap[node.splitterId].storedSizes.splice(i, 1, ..._splitterPropsMap[childNode.splitterId].storedSizes.map((x) => (x/100)*_splitterPropsMap[node.splitterId].storedSizes[i]))
+            if (_splitterPropsMap[node.splitterId].sizes.length !== node.children.length) {
+              debugger
+            }
             delete _splitterPropsMap[childNode.splitterId]
             i += (childNode.children.length - 1)
           }
