@@ -20,14 +20,5 @@
 
     .cm-gutters {
         border-bottom-left-radius: 8px;  // This should be set from parent
-        background: none;
-        padding-left: 12px;
-        padding-right: 12px;
-        border: none;
-
-        .cm-activeLineGutter {
-            background: none;
-            color: black;
-        }
     }
 }
