@@ -41,22 +41,34 @@ export const Pane = (props: PaneProps) => {
   const minSize = 36;
   let started = false;
   let drag = false;
+  let startX: number
+  let startY: number
+  const dragDelta = 6;
 
   const downListener = (e: MouseEvent) => {
     // console.log('downListener')
     started = true
     drag = false
+    startX = e.pageX;
+    startY = e.pageY;
   }
 
   const moveListener = (e: MouseEvent, tabId?: string) => {
     if (!started) {
       return
     }
-    if (!drag) {
-      // console.log('moveListener')
-      props.onDragStart(e, tabId)
-      drag = true
+    if (drag) {
+      return
     }
+    const diffX = Math.abs(e.pageX - startX);
+    const diffY = Math.abs(e.pageY - startY);
+    if (diffX < dragDelta && diffY < dragDelta) {
+      // Its a click
+      return
+    }
+
+    props.onDragStart(e, tabId)
+    drag = true
   }
 
   const upListener = (e: MouseEvent) => {

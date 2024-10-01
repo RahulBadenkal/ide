@@ -92,7 +92,7 @@ enum TabType {
   WHITEBOARD = "whiteboard",
   CODE_EDITOR = "code-editor",
   CONSOLE = "console",
-  DUMMY = "dummy"
+  // DUMMY = "dummy"
 }
 
 type SplitNodeSplitter = {
@@ -154,7 +154,7 @@ const TABS_METADATA: { [tabId in TabType]: Omit<Tab, "id" | "icon"> & { icon: an
   [TabType.WHITEBOARD]: { title: 'Whiteboard', icon: () => <CodeXmlIcon size={16} /> },
   [TabType.CODE_EDITOR]: { title: 'Code', icon: () => <CodeXmlIcon size={16} /> },
   [TabType.CONSOLE]: { title: 'Console', icon: () => <CodeXmlIcon size={16} /> },
-  [TabType.DUMMY]: { title: 'Dummy', icon: () => <CodeXmlIcon size={16} /> }
+  // [TabType.DUMMY]: { title: 'Dummy', icon: () => <CodeXmlIcon size={16} /> }
 }
 
 // Component
@@ -380,6 +380,7 @@ export const Workspace = () => {
     _recursive(splitNodes())
     setSplitterPropsMap({ ...splitterPropsMap() })
     for (let splitterId of Object.keys(splitterRefs)) {
+      
       splitterRefs[splitterId].recreate()
     }
   }
@@ -1058,54 +1059,59 @@ export const Workspace = () => {
     </div>
   }
 
-  const recursiveLayout = (node: SplitNodeSplitter) => {
-    return <SplitPane
-      direction={splitterPropsMap()[node.splitterId].direction}
-      sizes={splitterPropsMap()[node.splitterId].sizes}
-      minSize={paneInFullScreen() ? 0 : SPLITTER_MIN_SIZE}
-      gutterSize={paneInFullScreen() ? 0 : SPLITTER_GUTTER_SIZE}
-      onDragEnd={(sizes) => onSplitterDragEnd(node.splitterId, sizes)}
-      ref={(r) => splitterRefs[node.splitterId] = r}
-    >
-      <For each={node.children}>
-        {(item: SplitNode, index) => {
-          if (item.type === "splitter") {
-            return recursiveLayout(item)
-          }
+  const recursiveLayout = (node: SplitNode) => {
+    const _getPane = (item: SplitNodeElement) => <div class="w-full h-full">
+        <Pane
+          id={item.paneId}
+          class={`border border-solid border-gray-300 ${!paneInFullScreen() || paneInFullScreen() === item.paneId ? '' : 'hidden'}`}
+          // direction={tabDirection()['whiteboard']}
+          inFullScreenMode={paneInFullScreen() === item.paneId}
+          tabs={panePropsMap()[item.paneId].tabs.map((x) => ({ ...TABS_METADATA[x.type], icon: TABS_METADATA[x.type].icon(), ...x }))}
+          activeTabId={panePropsMap()[item.paneId].activeTabId}
+          // dropIndex={dropPoint()?.type === "paneHeader" && (dropPoint() as any).paneId === item.paneId ? (dropPoint() as any).tabIndex : undefined}
+          onTabChange={(tabId) => onTabChange(item.paneId, tabId)}
+          toggleFullScreenMode={() => togglePaneFullScreen(item.paneId)}
+          toggleExpand={() => togglePaneExpand(item.paneId)}
+          onDragStart={(e, tabId) => onPaneDragStart(e, item.paneId, tabId)}
+        >
+          <Switch>
+            <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.WHITEBOARD}>
+              {whiteboardJsx}
+            </Match>
+            <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.CODE_EDITOR}>
+              {codeJsx}
+            </Match>
+            <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.CONSOLE}>
+              {consoleJsx}
+            </Match>
+            {/* <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.DUMMY}>
+              <div class="w-full h-full bg-white">Dummy</div>
+            </Match> */}
+          </Switch>
+        </Pane>
+      </div>
+  
+    return <Show when={node.type === "splitter"} fallback={_getPane(node as SplitNodeElement)}>
+      <SplitPane
+        direction={splitterPropsMap()[(node as SplitNodeSplitter).splitterId].direction}
+        sizes={splitterPropsMap()[(node as SplitNodeSplitter).splitterId].sizes}
+        minSize={paneInFullScreen() ? 0 : SPLITTER_MIN_SIZE}
+        gutterSize={paneInFullScreen() ? 0 : SPLITTER_GUTTER_SIZE}
+        onDragEnd={(sizes) => onSplitterDragEnd((node as SplitNodeSplitter).splitterId, sizes)}
+        ref={(r) => splitterRefs[(node as SplitNodeSplitter).splitterId] = r}
+      >
+        <For each={(node as SplitNodeSplitter).children}>
+          {(item: SplitNode, index) => {
+            if (item.type === "splitter") {
+              return recursiveLayout(item)
+            }
 
-          return <div class="relative">
-            <Pane
-              id={item.paneId}
-              class={`border border-solid border-gray-300 ${!paneInFullScreen() || paneInFullScreen() === item.paneId ? '' : 'hidden'}`}
-              // direction={tabDirection()['whiteboard']}
-              inFullScreenMode={paneInFullScreen() === item.paneId}
-              tabs={panePropsMap()[item.paneId].tabs.map((x) => ({ ...TABS_METADATA[x.type], icon: TABS_METADATA[x.type].icon(), ...x }))}
-              activeTabId={panePropsMap()[item.paneId].activeTabId}
-              // dropIndex={dropPoint()?.type === "paneHeader" && (dropPoint() as any).paneId === item.paneId ? (dropPoint() as any).tabIndex : undefined}
-              onTabChange={(tabId) => onTabChange(item.paneId, tabId)}
-              toggleFullScreenMode={() => togglePaneFullScreen(item.paneId)}
-              toggleExpand={() => togglePaneExpand(item.paneId)}
-              onDragStart={(e, tabId) => onPaneDragStart(e, item.paneId, tabId)}
-            >
-              <Switch>
-                <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.WHITEBOARD}>
-                  {whiteboardJsx}
-                </Match>
-                <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.CODE_EDITOR}>
-                  {codeJsx}
-                </Match>
-                <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.CONSOLE}>
-                  {consoleJsx}
-                </Match>
-                <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.DUMMY}>
-                  <div class="w-full h-full bg-white">Dummy</div>
-                </Match>
-              </Switch>
-            </Pane>
-          </div>
-        }}
-      </For>
-    </SplitPane>
+            return _getPane(item)
+          }}
+        </For>
+      </SplitPane>
+    </Show>  
+    
   }
 
   const bodyJsx = () => {
@@ -1172,7 +1178,7 @@ export const Workspace = () => {
   </Show>
 
   // This only holds the structure of the splitters
-  const [splitNodes, setSplitNodes] = createSignal<SplitNodeSplitter>({
+  const [splitNodes, setSplitNodes] = createSignal<SplitNode>({
     type: "splitter",
     splitterId: "1",
     children: [
@@ -1192,11 +1198,11 @@ export const Workspace = () => {
   })
   // This holds the reference to all splitter component refs
   // TODO: Manage cleanup of deleted refs
-  const splitterRefs = {}
+  const splitterRefs: {[splitterId: string]: any} = {}
 
   // This holds the props for all panes
   const [panePropsMap, setPanePropsMap] = createSignal<PanePropsMap>({
-    "1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }, { id: "1.1", type: TabType.DUMMY }], activeTabId: "1" },
+    "1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }], activeTabId: "1"}, // { id: "1.1", type: TabType.DUMMY }], activeTabId: "1" },
     "2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: "2" },
     "3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: "3" },
   })
@@ -1352,15 +1358,18 @@ export const Workspace = () => {
   }
 
   const togglePaneFullScreen = (paneId: string) => {
-    console.log('togglePaneFullScreen', paneId)
-    if (isNullOrUndefined(paneInFullScreen())) {
-      setPaneInFullScreen(paneId)
-      enableFullScreen()
-    }
-    else {
-      setPaneInFullScreen(null)
-      disableFullScreen()
-    }
+    batch(() => {
+      console.log('togglePaneFullScreen', paneId)
+      if (isNullOrUndefined(paneInFullScreen())) {
+        setPaneInFullScreen(paneId)
+        enableFullScreen()
+      }
+      else {
+        setPaneInFullScreen(null)
+        disableFullScreen()
+      }
+    })
+   
   }
 
   const togglePaneExpand = (paneId: string) => {
@@ -1405,16 +1414,18 @@ export const Workspace = () => {
     }
   }
 
-  const findPaneSplitter = (node: SplitNodeSplitter, paneId: string): SplitNodeSplitter => { 
+  const findPaneSplitter = (node: SplitNode, paneId: string): SplitNodeSplitter | null => { 
+    if (node.type === "pane") {
+      return
+    }
+
     for (let childNode of node.children) {
       if (childNode.type === "pane" && childNode.paneId === paneId) {
         return node
       }
-      if (childNode.type === "splitter") {
-        const x = findPaneSplitter(childNode, paneId)
-        if (x) {
-          return x
-        }
+      const x = findPaneSplitter(childNode, paneId)
+      if (x) {
+        return x
       }
     }
   }
@@ -1464,10 +1475,20 @@ export const Workspace = () => {
    
     _splitNodes = _removeSingleChild(_splitNodes) as SplitNodeSplitter
     _removeRedundantSplitters(_splitNodes)
+    for (let splitterId of Object.keys(splitterRefs)) {
+      if (!_splitterPropsMap[splitterId]) {
+        delete splitterRefs[splitterId]
+      }
+    }
     return _splitNodes
   }
 
   const newLayout = () => {
+    if (!dropTarget()) {
+      // TODO: Why is this happeneing
+      return
+    }
+
     const to = dropTarget().to
     const _draggedItem = draggedItem()
 
@@ -1602,20 +1623,26 @@ export const Workspace = () => {
           }
         }
 
-        // Add dragged item to ites new position
-        const parentNode = findPaneSplitter(_splitNodes, to.paneId)
-        const index = parentNode.children.findIndex((x) => x.type === "pane" && x.paneId === to.paneId)
+        // Add dragged item to it's new position
+        // parentNode will be empty only when root node is of type element
+        let parentNode = findPaneSplitter(_splitNodes, to.paneId)
+        const index = parentNode ? parentNode.children.findIndex((x) => x.type === "pane" && x.paneId === to.paneId): null
         let newSplitter: SplitNodeSplitter = {
           type: "splitter",
           splitterId: crypto.randomUUID(),
-          children: (to.insert === "before" ? [newNode, parentNode.children[index]] : [parentNode.children[index], newNode])
+          children: (to.insert === "before" ? [newNode, parentNode ? parentNode.children[index]: _splitNodes] : [parentNode ? parentNode.children[index]: _splitNodes, newNode])
         }
         _splitterPropsMap[newSplitter.splitterId] = {
           direction: to.direction,
           sizes: [50, 50],
           storedSizes: [50, 50]
         }
-        parentNode.children[index] = newSplitter
+        if (parentNode) {
+          parentNode.children[index] = newSplitter
+        }
+        else {
+          _splitNodes = newSplitter
+        }
         break
       }
     }
@@ -1625,6 +1652,7 @@ export const Workspace = () => {
     console.log('_splitNodes', _splitNodes)
     console.log('_splitterPropsMap', _splitterPropsMap)
     console.log('_panePropsMap', _panePropsMap)
+    console.log('splitterRefs', splitterRefs)
     setSplitNodes({..._splitNodes})
     setSplitterPropsMap({..._splitterPropsMap})
     setPanePropsMap({..._panePropsMap})
@@ -1671,7 +1699,7 @@ export const Workspace = () => {
       const box = dropBoundaryEl.getBoundingClientRect()
 
       // check edge case
-      if ((draggedItem().type === "pane" || panePropsMap()[draggedItem().paneId].tabs.length === 1) && splitNodes().children.length === 1) {
+      if ((draggedItem().type === "pane" || panePropsMap()[draggedItem().paneId].tabs.length === 1) && splitNodes().type === "pane") {
         outerStyle = `top: ${box.top}px; left: ${box.left}px; width: ${box.width}px; height: ${box.height}px;`, 
         setDropTarget({
           el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
