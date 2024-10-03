@@ -66,3 +66,7 @@ Following the 2 approach for now as seems more robust than approach 1 (but not a
 
 - How to make sure yjs state is always pristine?
 https://discuss.yjs.dev/t/how-to-label-a-transaction-and-add-event-metadata/2876/4?u=rahulbadenkal
+
+
+- How to properly use signals in solidjs with objects?
+https://docs.solidjs.com/reference/basic-reactivity/create-signal#equals

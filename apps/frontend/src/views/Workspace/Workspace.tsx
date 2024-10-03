@@ -1,10 +1,10 @@
-import { batch, createEffect, createMemo, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
+import { batch, createMemo, createSignal, For, Match, onMount, Show, SplitProps, Switch } from "solid-js"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
 import { useNavigate, useParams } from "@solidjs/router";
-import { deepClone, formUrl, isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
+import { formUrl, isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
 import { getCookie } from "@ide/browser-utils/src/lib/utils";
-import { Awareness, Collaborator, Doc, Language, Role } from "@ide/shared/src/lib/types"
+import { Awareness, Doc, Language, Role } from "@ide/shared/src/lib/types"
 import * as Y from "yjs"
 import { fromBase64ToUint8Array, fromUint8ArrayToBase64 } from "@ide/shared/src/lib/helpers"
 import { makeGetCall } from "@ide/ts-utils/src/lib/axios-utils"
@@ -92,7 +92,7 @@ enum TabType {
   WHITEBOARD = "whiteboard",
   CODE_EDITOR = "code-editor",
   CONSOLE = "console",
-  // DUMMY = "dummy"
+  DUMMY = "dummy"
 }
 
 type SplitNodeSplitter = {
@@ -112,7 +112,7 @@ type SplitterPropsMap = {
 }
 type PanePropsMap = {
   [paneId: string]: {
-    tabs: { id: string, type: TabType }[], activeTabId: string
+    tabs: { id: string, type: TabType }[], activeTabId: string, collapseStatus: {horizontal: boolean, vertical: boolean};
   }
 }
 
@@ -154,7 +154,7 @@ const TABS_METADATA: { [tabId in TabType]: Omit<Tab, "id" | "icon"> & { icon: an
   [TabType.WHITEBOARD]: { title: 'Whiteboard', icon: () => <CodeXmlIcon size={16} /> },
   [TabType.CODE_EDITOR]: { title: 'Code', icon: () => <CodeXmlIcon size={16} /> },
   [TabType.CONSOLE]: { title: 'Console', icon: () => <CodeXmlIcon size={16} /> },
-  // [TabType.DUMMY]: { title: 'Dummy', icon: () => <CodeXmlIcon size={16} /> }
+  [TabType.DUMMY]: { title: 'Dummy', icon: () => <CodeXmlIcon size={16} /> }
 }
 
 // Component
@@ -337,6 +337,18 @@ export const Workspace = () => {
     }
   }
 
+  const recreateSplits = () => {
+    for (let splitterId of Object.keys(splitterRefs)) {
+      splitterRefs[splitterId].recreate()
+      // const {sizes} = splitterPropsMap()[splitterId]
+      // for (let i = 0; i<sizes.length; i++) {
+      //   if (sizes[i] === 0) {
+      //     splitterRefs[splitterId].collapse(i)  // For some reason when size is set to 0, splitjs doesn't set the size to exact min size (its minsize + some small offset)
+      //   }
+      // }
+    }
+  }
+
   const enableFullScreen = () => {
     // Logic ->
     // Make sizes of all splitter children 0 except for the paths that have the pane which has full screen enabled, make that 100
@@ -362,10 +374,7 @@ export const Workspace = () => {
 
     _updateSizes(splitNodes())
     setSplitterPropsMap({ ...splitterPropsMap() })
-    for (let splitterId of Object.keys(splitterRefs)) {
-      splitterRefs[splitterId].recreate()
-    }
-    console.log(splitterPropsMap())
+    recreateSplits()
   }
 
   const disableFullScreen = () => {
@@ -383,11 +392,7 @@ export const Workspace = () => {
 
     _restoreSizes(splitNodes())
     setSplitterPropsMap({ ...splitterPropsMap() })
-    console.log(splitterPropsMap())
-    for (let splitterId of Object.keys(splitterRefs)) {
-      splitterRefs[splitterId].recreate()
-    }
-    // computeTabDirection()
+    recreateSplits()
   }
 
 
@@ -481,28 +486,6 @@ export const Workspace = () => {
     setDocuments(response.data.documents)
     setDocumentsLoadInfo({ state: ApiState.LOADED })
   }
-
-  // const computeTabDirection = () => {
-  //   const value = tabDirection()
-  //   const _computeTabDirection = (node: SplitNodeSplit) => {
-  //     const { sizes, direction } = splitNodesProps()[node.splitterId]
-  //     for (let [index, childNode] of node.children.entries()) {
-  //       if (childNode.type === "element") {
-  //         const size = sizes[index]
-  //         let _direction: TabProps["direction"] = direction === "horizontal" ? "left" : "up"
-  //         if (size <= SPLITTER_MIN_SIZE && index === 0) {
-  //           _direction = direction === "horizontal" ? "right" : "down"
-  //         }
-  //         value[childNode.elementId] = _direction
-  //       }
-  //       else {
-  //         _computeTabDirection(childNode)
-  //       }
-  //     }
-  //   }
-  //   _computeTabDirection(splitNodes())
-  //   setTabDirection({ ...value })
-  // }
 
   const toolbarJsx = () => {
     const _languageDropdownJsx = () => {
@@ -1044,18 +1027,20 @@ export const Workspace = () => {
   }
 
   const recursiveLayout = (node: SplitNode) => {
-    const _getPane = (item: SplitNodeElement) => <div class="w-full h-full">
+    const _getPane = (item: SplitNodeElement, index?: number, parentSplitter?: SplitNodeSplitter) => <div class="w-full h-full">
         <Pane
           id={item.paneId}
           class={`border border-solid border-gray-300 ${!paneInFullScreen() || paneInFullScreen() === item.paneId ? '' : 'hidden'}`}
-          // direction={tabDirection()['whiteboard']}
+          arrow={paneArrowMap()[item.paneId]?.arrow}
           inFullScreenMode={paneInFullScreen() === item.paneId}
           tabs={panePropsMap()[item.paneId].tabs.map((x) => ({ ...TABS_METADATA[x.type], icon: TABS_METADATA[x.type].icon(), ...x }))}
           activeTabId={panePropsMap()[item.paneId].activeTabId}
+          dragDirection={parentSplitter ? splitterPropsMap()[parentSplitter.splitterId].direction : null}
           onTabChange={(tabId) => onTabChange(item.paneId, tabId)}
           toggleFullScreenMode={() => togglePaneFullScreen(item.paneId)}
-          toggleExpand={() => togglePaneExpand(item.paneId)}
+          toggleFold={() => togglePaneFold(item.paneId)}
           onDragStart={(e, tabId) => onPaneDragStart(e, item.paneId, tabId)}
+          collapseStatus={(val) => onPaneCollapseChange(item.paneId, val)}
         >
           <Switch>
             <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.WHITEBOARD}>
@@ -1067,9 +1052,9 @@ export const Workspace = () => {
             <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.CONSOLE}>
               {consoleJsx}
             </Match>
-            {/* <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.DUMMY}>
+            <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.DUMMY}>
               <div class="w-full h-full bg-white">Dummy</div>
-            </Match> */}
+            </Match>
           </Switch>
         </Pane>
       </div>
@@ -1089,7 +1074,7 @@ export const Workspace = () => {
               return recursiveLayout(item)
             }
 
-            return _getPane(item)
+            return _getPane(item, index(), node as SplitNodeSplitter)
           }}
         </For>
       </SplitPane>
@@ -1185,21 +1170,16 @@ export const Workspace = () => {
 
   // This holds the props for all panes
   const [panePropsMap, setPanePropsMap] = createSignal<PanePropsMap>({
-    "1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }], activeTabId: "1"}, // { id: "1.1", type: TabType.DUMMY }], activeTabId: "1" },
-    "2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: "2" },
-    "3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: "3" },
+    "1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }, { id: "1.1", type: TabType.DUMMY}], activeTabId: "1", collapseStatus: {horizontal: false, vertical: false} },
+    "2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: "2", collapseStatus: {horizontal: false, vertical: false} },
+    "3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: "3", collapseStatus: {horizontal: false, vertical: false} },
   })
-
-  // Holds the collapse/expand arrow direction for tabs
-  // const [tabDirection, setTabDirection] = createSignal<{ [key: string]: PaneProps["direction"] }>({ whiteboard: "left", code: "up", console: "up" })
 
   // drag drop related variables
   const [isDragging, setIsDragging] = createSignal(false)
   const [draggedItem, setDraggedItem] = createSignal<DraggedItem>(null)
   const [dropTarget, setDropTarget] = createSignal<DropTarget>(null)
-  // TODO: add cleanup for els that are no longer in dom
-  let lastDropTargetEl: HTMLElement | null = null
-
+  
   // computed variables
   const pageLoaded = createMemo(() => pageLoadApiInfo().state === ApiState.LOADED)
   const filteredDocuments = createMemo(() => documents()
@@ -1234,13 +1214,121 @@ export const Workspace = () => {
     }
     return x
   })
+  
+  const splitterCollapseStatus = createMemo<{[splitterId: string]: {horizontal: boolean, vertical: boolean}}>(() => {
+    const mapper = {}
+    if (splitNodes().type === "pane") return mapper
 
+    const _x = (node: SplitNodeSplitter, directionToCompute : SplitPaneProps["direction"]) => {
+      const direction = splitterPropsMap()[node.splitterId].direction
+      let splitterCollapse = null;
+      for (let childNode of node.children) {
+        let collapsed: boolean;
+        if (childNode.type === "pane") {
+          collapsed = panePropsMap()[childNode.paneId].collapseStatus[directionToCompute]
+        }
+        else {
+          collapsed = _x(childNode, directionToCompute)
+        }
+        if (isNullOrUndefined(splitterCollapse)) {
+          splitterCollapse = collapsed
+        }
+        else if (directionToCompute === direction) {
+          splitterCollapse = splitterCollapse && collapsed  // All child must be collapsed for parent to be called collapsed
+        }
+        else {
+          splitterCollapse = splitterCollapse || collapsed  // Any child must be collapsed for parent to be called collapsed
+        }
+      }
+    
+      if (mapper[node.splitterId]) {
+        mapper[node.splitterId][directionToCompute] = splitterCollapse
+      }
+      else {
+        mapper[node.splitterId] = {[directionToCompute]: splitterCollapse}
+      }
+      return splitterCollapse
+    }
+
+    _x(splitNodes() as SplitNodeSplitter, 'horizontal')
+    _x(splitNodes() as SplitNodeSplitter, 'vertical')
+    return mapper
+  })
+
+
+  const paneArrowMap = createMemo<{[paneId: string]: {arrow: PaneProps["arrow"], siblingIndex: number}}>(() => {
+    const mapper: any = {}
+    const actionToDirectionMap = {
+      horizontal: {
+        left: "left", right: "right"
+      },
+      vertical: {
+        left: "up", right: "down"
+      }
+    }
+
+    const _x = (node: SplitNode) => {
+      // This is to handle the condition when root node is of tyle SplitElement
+      if (node.type === "pane") {
+        return
+      }
+
+      const direction = splitterPropsMap()[node.splitterId].direction
+      const childrenCollapseStatus = node.children.map((childNode, index) => childNode.type === "pane" ? panePropsMap()[childNode.paneId].collapseStatus[direction] : splitterCollapseStatus()[childNode.splitterId][direction])
+      for (let [index, childNode] of node.children.entries()) {
+        // logic = arrows always try to reduce the size of the pane if the pane is not collapsed
+        // if the pane is already collapsed then arrow will point in that direction where it can occupy more space
+        let collapsed = childrenCollapseStatus[index]
+        
+        if (childNode.type === "pane") {
+          if (paneInFullScreen()) {
+            continue
+          }
+          
+          let action: "left" | "right" = null
+          let siblingIndex: number = null;
+          let closestExpandedSiblingIndex = childrenCollapseStatus.reduce((closestIndex: number, _collapsed: boolean, _index) => {
+            if (index === _index) return closestIndex
+            if (_collapsed) return closestIndex
+            if (isNullOrUndefined(closestIndex)) return _index
+            return Math.abs(index - _index) < Math.abs(index - closestIndex) ? _index : closestIndex
+          }, null)
+
+         
+          if (collapsed) {
+            // There will always be 1 expanded sibling
+            // Find the closest expanded sibling
+            action = closestExpandedSiblingIndex < index ? "left": "right"
+            siblingIndex = closestExpandedSiblingIndex
+          }
+          else {
+            // Possible that there is no sibling that is expanded (current item was the only expanded item)
+            if (isNullOrUndefined(closestExpandedSiblingIndex)) {
+              closestExpandedSiblingIndex = index === 0? index + 1: index - 1; 
+            }
+            action = closestExpandedSiblingIndex < index ? "right" : "left"
+            siblingIndex = closestExpandedSiblingIndex
+          }
+          mapper[childNode.paneId] = {
+            arrow: actionToDirectionMap[direction][action], siblingIndex
+          }
+        }
+        else {
+          _x(childNode)
+        }
+      }
+    }
+    
+    _x(splitNodes())
+    return mapper
+  })
+  
   // events
   setupSocket()
 
-  onMount((() => {
-    // computeTabDirection()
-  }))
+  onMount(() => {
+    recreateSplits()
+  })
 
   const reconnect = () => {
     setSocketRetryCount(0)
@@ -1325,12 +1413,10 @@ export const Workspace = () => {
 
   // splitter events
   const onSplitterDragEnd = (splitterId: string, sizes: number[]) => {
-    console.log(splitterId, sizes)
     batch(() => {
       splitterPropsMap()[splitterId].sizes = sizes
       splitterPropsMap()[splitterId].storedSizes = [...sizes]
       setSplitterPropsMap({ ...splitterPropsMap() })
-      // computeTabDirection()
     })
   }
 
@@ -1355,17 +1441,43 @@ export const Workspace = () => {
    
   }
 
-  const togglePaneExpand = (paneId: string) => {
+  const togglePaneFold = (paneId: string) => {
+    const paneSplitter = findPaneSplitter(splitNodes(), paneId)
+    const {direction, sizes, storedSizes} = splitterPropsMap()[paneSplitter.splitterId]
+    const index = paneSplitter.children.findIndex((x) => x.type === "pane" && x.paneId === paneId)
+    const collpsed = panePropsMap()[paneId].collapseStatus[direction]
+    const {siblingIndex} = paneArrowMap()[paneId]
+    if (collpsed) {
+      const newSize = (sizes[index] + sizes[siblingIndex]) / 2
+      sizes[index] = newSize; storedSizes[index] = newSize;
+      sizes[siblingIndex] = newSize; storedSizes[siblingIndex] = newSize
+    }
+    else {
+      const siblingSize = sizes[index] + sizes[siblingIndex]
+      sizes[index] = 0; storedSizes[index] = 0;
+      sizes[siblingIndex] = siblingSize; storedSizes[siblingIndex] = siblingSize;
+    }
 
+    setSplitNodes({...splitNodes()})
+    recreateSplits()
   }
 
   const onPaneDragStart = (event: MouseEvent, paneId: string, tabId?: string) => {
-    console.log('onPaneDragStart', paneId, tabId, event);
+    // console.log('onPaneDragStart', paneId, tabId, event);
     batch(() => {
       document.body.classList.add('dragging')
       setIsDragging(true)
       setDraggedItem({ type: tabId ? "tab" : "pane", paneId, tabId })
     })
+  }
+
+  const onPaneCollapseChange = (paneId: string, val: {horizontal: boolean, vertical: boolean}) => {
+    const {horizontal, vertical} = panePropsMap()[paneId].collapseStatus
+    if (horizontal === val.horizontal && vertical === val.vertical) {
+      return
+    }
+    panePropsMap()[paneId].collapseStatus = val
+    setPanePropsMap({...panePropsMap()})
   }
 
   const findSplitter = (node: SplitNodeSplitter, splitterId: string): SplitNodeSplitter => {
@@ -1448,9 +1560,6 @@ export const Workspace = () => {
             node.children.splice(i, 1, ...childNode.children)
             _splitterPropsMap[node.splitterId].sizes.splice(i, 1, ..._splitterPropsMap[childNode.splitterId].sizes.map((x) => (x/100)*_splitterPropsMap[node.splitterId].sizes[i]))
             _splitterPropsMap[node.splitterId].storedSizes.splice(i, 1, ..._splitterPropsMap[childNode.splitterId].storedSizes.map((x) => (x/100)*_splitterPropsMap[node.splitterId].storedSizes[i]))
-            if (_splitterPropsMap[node.splitterId].sizes.length !== node.children.length) {
-              debugger
-            }
             delete _splitterPropsMap[childNode.splitterId]
             i += (childNode.children.length - 1)
           }
@@ -1510,7 +1619,7 @@ export const Workspace = () => {
           }
           _panePropsMap[newNode.paneId] = {
             tabs: [{id: _draggedItem.tabId, type: tabInfoMap()[_draggedItem.tabId].tabType}],
-            activeTabId: _draggedItem.tabId
+            activeTabId: _draggedItem.tabId, collapseStatus: _panePropsMap[_draggedItem.paneId].collapseStatus
           }
         }
         else {
@@ -1591,7 +1700,7 @@ export const Workspace = () => {
           }
           _panePropsMap[newNode.paneId] = {
             tabs: [{id: _draggedItem.tabId, type: tabInfoMap()[_draggedItem.tabId].tabType}],
-            activeTabId: _draggedItem.tabId
+            activeTabId: _draggedItem.tabId, collapseStatus: _panePropsMap[_draggedItem.paneId].collapseStatus
           }
         }
         else {
@@ -1645,7 +1754,7 @@ export const Workspace = () => {
   }
 
   const onPaneDragEnd = (e: MouseEvent) => {
-    console.log('onPaneDragEnd', e)
+    // console.log('onPaneDragEnd', e)
     batch(() => {
       newLayout()
 
@@ -1758,7 +1867,7 @@ export const Workspace = () => {
                 el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
                 to: {type: "2", paneId, index}
               })
-              console.log(dropTarget())
+              // console.log(dropTarget())
             }
             else {
               // Drop at beginning of next header
@@ -1767,7 +1876,7 @@ export const Workspace = () => {
                 el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
                 to: {type: "2", paneId, index: index + 1}
               })
-              console.log(dropTarget())
+              // console.log(dropTarget())
             }
             return true
           }
@@ -1778,7 +1887,7 @@ export const Workspace = () => {
             el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
             to: {type: "2", paneId, index: headers.length}
           })
-          console.log(dropTarget())
+          // console.log(dropTarget())
           return true
         }
         
@@ -1808,7 +1917,7 @@ export const Workspace = () => {
               el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
               to: {type: "2", paneId, index}
             })
-            console.log(dropTarget())
+            // console.log(dropTarget())
           }
           else {
             // Drop at beginning of next header
@@ -1817,7 +1926,7 @@ export const Workspace = () => {
               el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
               to: {type: "2", paneId, index: index + 1}
             })
-            console.log(dropTarget())
+            // console.log(dropTarget())
           }
           return true
         }
@@ -1828,7 +1937,7 @@ export const Workspace = () => {
           el: { outer: { class: outerClass, style: outerStyle }, inner: { class: innerClass, style: innerStyle } },
           to: {type: "2", paneId, index: headers.length}
         })
-        console.log(dropTarget())
+        // console.log(dropTarget())
         return true
       }
 
@@ -1880,7 +1989,7 @@ export const Workspace = () => {
           {type: "3", paneId, direction: x === "top" || x === "bottom" ? "vertical" : "horizontal", insert: x === "top" || x === "left" ? "before" : "after" }
           : {type: "2", paneId, index: panePropsMap()[paneId].tabs.length},
       })
-      console.log(dropTarget())
+      // console.log(dropTarget())
       return true
     }
 
@@ -1929,7 +2038,7 @@ export const Workspace = () => {
 
     if (!found) {
       // If not found inside _recursive, then missed some parts (most likely the gutter). In this case keep the last known droppoint as i
-      console.log('No match found, Keeping the last known drop point', dropTarget())
+      // console.log('No match found, Keeping the last known drop point', dropTarget())
     }
   }
 

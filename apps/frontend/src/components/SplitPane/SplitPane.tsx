@@ -36,9 +36,12 @@ export const SplitPane = (props: SplitPaneProps) => {
     })
   }
 
+  const collapse = (index: number) => {
+    split.collapse(index)
+  }
 
   onMount(() => {
-    props.ref?.({ recreate });
+    props.ref?.({ recreate, collapse });
     recreate()
   })
 
