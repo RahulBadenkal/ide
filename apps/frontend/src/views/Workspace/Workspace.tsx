@@ -176,7 +176,7 @@ const INITIAL_SPLITTER_PROPS: SplitterPropsMap = {
 }
 
 const INITIAL_PANE_PROPS: PanePropsMap = {
-"1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }, { id: "1.1", type: TabType.DUMMY}], activeTabId: "1", collapseStatus: {horizontal: false, vertical: false} },
+"1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }], activeTabId: "1", collapseStatus: {horizontal: false, vertical: false} },  // { id: "1.1", type: TabType.DUMMY}
 "2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: "2", collapseStatus: {horizontal: false, vertical: false} },
 "3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: "3", collapseStatus: {horizontal: false, vertical: false} },
 }
