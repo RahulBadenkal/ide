@@ -1094,7 +1094,7 @@ export const Workspace = () => {
               {consoleJsx}
             </Match>
             <Match when={tabInfoMap()[panePropsMap()[item.paneId].activeTabId].tabType === TabType.DUMMY}>
-              <div class="w-full h-full bg-white">Dummy</div>
+              <div class="w-full h-full bg-white p-2">Dummy</div>
             </Match>
           </Switch>
         </Pane>
