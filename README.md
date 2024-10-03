@@ -18,5 +18,4 @@ This release focuses on building essential tools for seamless real-time collabor
 - **Customizable Layout:** Drag drop panes to reorder the layout as per your preference.
 
 #### ⏳ Pending Features  
-- **Peer Cursor Support:** Real-time visibility of collaborator's cursors in the whiteboard and code editor.  
-- **Frontend Build Optimization:** Reduce the frontend build size for faster loading times.
+- **Peer Cursor Support:** Real-time visibility of collaborator's cursors in the whiteboard and code editor.
