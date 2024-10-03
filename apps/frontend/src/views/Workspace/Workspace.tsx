@@ -2,7 +2,7 @@ import { batch, createMemo, createSignal, For, Match, onMount, Show, SplitProps,
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
 import { useNavigate, useParams } from "@solidjs/router";
-import { formUrl, isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
+import { deepClone, formUrl, isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
 import { getCookie } from "@ide/browser-utils/src/lib/utils";
 import { Awareness, Doc, Language, Role } from "@ide/shared/src/lib/types"
 import * as Y from "yjs"
@@ -155,6 +155,30 @@ const TABS_METADATA: { [tabId in TabType]: Omit<Tab, "id" | "icon"> & { icon: an
   [TabType.CODE_EDITOR]: { title: 'Code', icon: () => <CodeXmlIcon size={16} /> },
   [TabType.CONSOLE]: { title: 'Console', icon: () => <CodeXmlIcon size={16} /> },
   [TabType.DUMMY]: { title: 'Dummy', icon: () => <CodeXmlIcon size={16} /> }
+}
+
+const INITIAL_SPLIT_NODES: SplitNode = {
+  type: "splitter",
+  splitterId: "1",
+  children: [
+    { type: "pane", paneId: "1" },
+    {
+      type: "splitter", splitterId: "2", children: [
+        { type: "pane", paneId: "2" },
+        { type: "pane", paneId: "3" },
+      ]
+    }
+  ]
+}
+const INITIAL_SPLITTER_PROPS: SplitterPropsMap = {
+  "1": { direction: "horizontal", sizes: [50, 50], storedSizes: [50, 50] },
+  "2": { direction: "vertical", sizes: [50, 50], storedSizes: [50, 50] },
+}
+
+const INITIAL_PANE_PROPS: PanePropsMap = {
+"1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }, { id: "1.1", type: TabType.DUMMY}], activeTabId: "1", collapseStatus: {horizontal: false, vertical: false} },
+"2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: "2", collapseStatus: {horizontal: false, vertical: false} },
+"3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: "3", collapseStatus: {horizontal: false, vertical: false} },
 }
 
 // Component
@@ -777,6 +801,23 @@ export const Workspace = () => {
         />
         <DropdownMenuContent class="p-3 grid gap-y-3">
           <div class="font-medium">Layouts</div>
+          <div>
+            <div class="relative flex flex-col gap-y-1 group">
+              <div class="absolute w-full h-full top-[-10px] flex items-center justify-center invisible group-[:hover]:visible ">
+                <Button onClick={resetLayout}>
+                  Apply
+              </Button>
+              </div>
+              <div class="flex gap-x-1" style="width: 150px; height: 100px;">
+                <div class="w-[50%] h-full bg-gray-100 rounded-md border border-solid border-gray-300"></div>
+                <div class="w-[50%] h-full flex flex-col gap-y-1">
+                  <div class="w-full h-[50%] bg-gray-100 rounded-md border border-solid border-gray-300"></div>
+                  <div class="w-full h-[50%] bg-gray-100 rounded-md border border-solid border-gray-300"></div>
+                </div>
+              </div>
+              <div class="text-sm">Default</div>
+            </div>
+          </div>
         </DropdownMenuContent>
       </DropdownMenu>
     }
@@ -923,7 +964,7 @@ export const Workspace = () => {
       <div class="flex gap-x-4">
         {_collaboratorsJsx()}
         {_shareJsx()}
-        {/* {_layoutsJsx()} */}
+        {_layoutsJsx()}
         {/* {_settingsJsx()} */}
         {_accountJsx()}
       </div>
@@ -1146,34 +1187,15 @@ export const Workspace = () => {
   </Show>
 
   // This only holds the structure of the splitters
-  const [splitNodes, setSplitNodes] = createSignal<SplitNode>({
-    type: "splitter",
-    splitterId: "1",
-    children: [
-      { type: "pane", paneId: "1" },
-      {
-        type: "splitter", splitterId: "2", children: [
-          { type: "pane", paneId: "2" },
-          { type: "pane", paneId: "3" },
-        ]
-      }
-    ]
-  })
+  const [splitNodes, setSplitNodes] = createSignal<SplitNode>(deepClone(INITIAL_SPLIT_NODES))
   // This holds the props for all splitters
-  const [splitterPropsMap, setSplitterPropsMap] = createSignal<SplitterPropsMap>({
-    "1": { direction: "horizontal", sizes: [50, 50], storedSizes: [50, 50] },
-    "2": { direction: "vertical", sizes: [50, 50], storedSizes: [50, 50] },
-  })
+  const [splitterPropsMap, setSplitterPropsMap] = createSignal<SplitterPropsMap>(deepClone(INITIAL_SPLITTER_PROPS))
   // This holds the reference to all splitter component refs
   // TODO: Manage cleanup of deleted refs
-  const splitterRefs: {[splitterId: string]: any} = {}
+  let splitterRefs: {[splitterId: string]: any} = {}
 
   // This holds the props for all panes
-  const [panePropsMap, setPanePropsMap] = createSignal<PanePropsMap>({
-    "1": { tabs: [{ id: "1", type: TabType.WHITEBOARD }, { id: "1.1", type: TabType.DUMMY}], activeTabId: "1", collapseStatus: {horizontal: false, vertical: false} },
-    "2": { tabs: [{ id: "2", type: TabType.CODE_EDITOR }], activeTabId: "2", collapseStatus: {horizontal: false, vertical: false} },
-    "3": { tabs: [{ id: "3", type: TabType.CONSOLE }], activeTabId: "3", collapseStatus: {horizontal: false, vertical: false} },
-  })
+  const [panePropsMap, setPanePropsMap] = createSignal<PanePropsMap>(deepClone(INITIAL_PANE_PROPS))
 
   // drag drop related variables
   const [isDragging, setIsDragging] = createSignal(false)
@@ -1409,6 +1431,16 @@ export const Workspace = () => {
     setIsNewLinkGenerated(true)
     setTimeout(() => setIsNewLinkGenerated(false), 2000)
     setPageUrl()
+  }
+
+  const resetLayout = () => {
+    batch(() => {
+      setSplitNodes(deepClone(INITIAL_SPLIT_NODES))
+      setSplitterPropsMap(deepClone(INITIAL_SPLITTER_PROPS))
+      setPanePropsMap(deepClone(INITIAL_PANE_PROPS))
+      splitterRefs = {}
+      console.log(splitterRefs)
+    })
   }
 
   // splitter events
