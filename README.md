@@ -19,5 +19,4 @@ This release focuses on building essential tools for seamless real-time collabor
 
 #### ⏳ Pending Features  
 - **Peer Cursor Support:** Real-time visibility of collaborator's cursors in the whiteboard and code editor.  
-- **Syntax Highlighting:** Add syntax highlighting for a better coding experience.
 - **Frontend Build Optimization:** Reduce the frontend build size for faster loading times.
