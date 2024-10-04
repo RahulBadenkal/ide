@@ -9,6 +9,7 @@ import * as Y from "yjs"
 import { fromBase64ToUint8Array, fromUint8ArrayToBase64 } from "@ide/shared/src/lib/helpers"
 import { makeGetCall } from "@ide/ts-utils/src/lib/axios-utils"
 import './Workspace.styles.scss'
+import SolidjsIcon from "@/assets/solid-js-icon.png"
 
 // import icon
 import CheckIcon from 'lucide-solid/icons/check';
@@ -900,10 +901,10 @@ export const Workspace = () => {
     return <div class='shrink-0 flex justify-between items-center px-5 py-2 gap-x-3'>
       <div class="flex items-center gap-x-3">
         {/* Logo */}
-        {/* <div class="h-5 flex items-center">
-          <img src={logo} class='h-full mr-2'></img>
+        <div class="h-5 flex items-center">
+          <img src={SolidjsIcon} class='h-full mr-2'></img>
           <Separator orientation="vertical" />
-        </div> */}
+        </div>
         <div class="w-full max-w-[250px] ml-2">
           <TextFieldRoot class="w-full">
             <TextField type="text" placeholder="Type your doc name..." class="bg-background" value={doc().name} onInput={(e) => onDocNameUpdate(e.currentTarget.value)} />
