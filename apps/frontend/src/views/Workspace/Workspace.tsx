@@ -898,12 +898,12 @@ export const Workspace = () => {
     }
 
     return <div class='shrink-0 flex justify-between items-center px-5 py-2 gap-x-3'>
-      {/* Logo */}
       <div class="flex items-center gap-x-3">
-        <div class="h-5 flex items-center">
-          <img src='https://leetcode.com/_next/static/images/logo-ff2b712834cf26bf50a5de58ee27bcef.png' class='h-full mr-2'></img>
+        {/* Logo */}
+        {/* <div class="h-5 flex items-center">
+          <img src={logo} class='h-full mr-2'></img>
           <Separator orientation="vertical" />
-        </div>
+        </div> */}
         <div class="w-full max-w-[250px] ml-2">
           <TextFieldRoot class="w-full">
             <TextField type="text" placeholder="Type your doc name..." class="bg-background" value={doc().name} onInput={(e) => onDocNameUpdate(e.currentTarget.value)} />
