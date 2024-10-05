@@ -406,12 +406,6 @@ export const Workspace = () => {
   const recreateSplits = () => {
     for (let splitterId of Object.keys(splitterRefs)) {
       splitterRefs[splitterId].recreate()
-      // const {sizes} = splitterPropsMap()[splitterId]
-      // for (let i = 0; i<sizes.length; i++) {
-      //   if (sizes[i] === 0) {
-      //     splitterRefs[splitterId].collapse(i)  // For some reason when size is set to 0, splitjs doesn't set the size to exact min size (its minsize + some small offset)
-      //   }
-      // }
     }
   }
 
