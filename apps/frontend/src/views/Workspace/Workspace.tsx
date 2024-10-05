@@ -10,6 +10,8 @@ import { fromBase64ToUint8Array, fromUint8ArrayToBase64 } from "@ide/shared/src/
 import { makeGetCall } from "@ide/ts-utils/src/lib/axios-utils"
 import './Workspace.styles.scss'
 import SolidjsIcon from "@/assets/solid-js-icon.png"
+import * as awarenessProtocol from 'y-protocols/awareness.js'
+import * as random from 'lib0/random'
 
 // import icon
 import CheckIcon from 'lucide-solid/icons/check';
@@ -63,14 +65,6 @@ import { Pane, PaneProps, Tab } from "./Pane";
 import { CodeEditor } from "@/components/CodeEditor/CodeEditor";
 import { Whiteboard, WhiteboardProps } from "@/components/Whiteboard/Whiteboard";
 import { SplitPane, SplitPaneProps } from "@/components/SplitPane/SplitPane";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -151,6 +145,16 @@ const COLORS = [
   'bg-red-500',
   'bg-purple-500',
 ]
+export const usercolors = [
+  { color: '#30bced', light: '#30bced33' },
+  { color: '#6eeb83', light: '#6eeb8333' },
+  { color: '#ffbc42', light: '#ffbc4233' },
+  { color: '#ecd444', light: '#ecd44433' },
+  { color: '#ee6352', light: '#ee635233' },
+  { color: '#9ac2c9', light: '#9ac2c933' },
+  { color: '#8acb88', light: '#8acb8833' },
+  { color: '#1be7ff', light: '#1be7ff33' }
+]
 const TABS_METADATA: { [tabId in TabType]: Omit<Tab, "id" | "icon"> & { icon: any } } = {
   [TabType.WHITEBOARD]: { title: 'Whiteboard', icon: () => <CodeXmlIcon size={16} /> },
   [TabType.CODE_EDITOR]: { title: 'Code', icon: () => <CodeXmlIcon size={16} /> },
@@ -194,7 +198,7 @@ export const Workspace = () => {
   }
 
   const handleIncomingMessage = (message: any) => {
-    const { type, data, docDelta, awarenessDelta } = message
+    const { type, data, docDelta, awarenessDelta, newAwarenessDelta } = message
 
     if (docDelta) {
       Y.applyUpdate(yDoc(), fromBase64ToUint8Array(docDelta))
@@ -202,14 +206,33 @@ export const Workspace = () => {
     if (awarenessDelta) {
       Y.applyUpdate(yAwareness(), fromBase64ToUint8Array(awarenessDelta))
     }
+    if (newAwarenessDelta) {
+      awarenessProtocol.applyAwarenessUpdate(newYAwareness(), fromBase64ToUint8Array(newAwarenessDelta), null)
+    }
 
     switch (type) {
       case "init": {
-        setUser(data.user)
+        const userColor = usercolors[random.uint32() % usercolors.length]
+        setUser({
+          ...data.user,
+          color: userColor.color,
+          colorLight: userColor.light,
+        })
         setRole(data.role)
 
         Y.applyUpdate(yDoc(), fromBase64ToUint8Array(data.yDoc))
         Y.applyUpdate(yAwareness(), fromBase64ToUint8Array(data.yAwareness))
+        newYAwareness().setLocalStateField('user', {
+          name: user().name,
+
+          // used by code mirror
+          colorLight: user().colorLight,
+
+          // used by excalidraw
+
+          // user by both code mirror and excalidraw
+          color: user().color,
+        })
 
         // set other ui info
         setPageUrl()
@@ -348,9 +371,22 @@ export const Workspace = () => {
     console.log(awareness())
   }
 
+  const onNewYjsAwarenessUpdate = ({ added, updated, removed }, s, t) => {
+    console.log('onNewYjsAwarenessUpdate', {added, updated, removed})
+    const changedClients: number[] = added.concat(updated).concat(removed)
+    if (changedClients.findIndex((x) => x === newYAwareness().clientID) >= 0) {
+      // broadcast local changes
+      const base64Update = fromUint8ArrayToBase64(awarenessProtocol.encodeAwarenessUpdate(newYAwareness(), changedClients))
+      const message = { type: "newYAwarenessUpdate", newAwarenessDelta: base64Update }
+      sendMessage(message)
+    }
+  }
+
   const setupYjsEvents = () => {
     yDoc().on("update", onYjsDocUpdate)
     yAwareness().on("update", onYjsAwarenessUpdate)
+    setNewYAwareness(new awarenessProtocol.Awareness(yDoc()))
+    newYAwareness().on("change", onNewYjsAwarenessUpdate)
   }
 
   const closeYjsEvents = () => {
@@ -359,6 +395,9 @@ export const Workspace = () => {
     }
     if (yAwareness()) {
       yAwareness().destroy()
+    }
+    if (newYAwareness()) {
+      newYAwareness().destroy()
     }
   }
 
@@ -636,12 +675,19 @@ export const Workspace = () => {
         <div class="flex items-center gap-x-1">
           <div class="flex -space-x-2">
             <For each={visibleCollaboratorsCircles()}>
-              {(item, index) => <div
-                class={`relative w-8 h-8 rounded-full ${COLORS[index() % COLORS.length]} flex items-center justify-center text-white font-semibold text-sm border-2 border-white`}
-                style={`zIndex: ${visibleCollaboratorsCircles().length - index()}`}
-              >
-                {(item.name?.[0] || '-').toLocaleUpperCase()}
-              </div>}
+              {(item, index) => <Tooltip>
+               <TooltipTrigger>
+                <div
+                  class={`cursor-auto relative w-8 h-8 rounded-full ${COLORS[index() % COLORS.length]} flex items-center justify-center text-white font-semibold text-sm border-2 border-white`}
+                  style={`z-index: ${visibleCollaboratorsCircles().length - index()}`}
+                >
+                  {(item.name?.[0] || '-').toLocaleUpperCase()}
+                </div>
+               </TooltipTrigger>
+               <TooltipContent>
+                 <p>{item.name || '-'}</p>
+               </TooltipContent>
+             </Tooltip>}
             </For>
           </div>
           <Show when={totalCollaborators() > visibleCollaboratorsCircles().length}>
@@ -1141,6 +1187,7 @@ export const Workspace = () => {
   // variables
   const [yDoc, setYDoc] = createSignal<Y.Doc>(new Y.Doc())
   const [yAwareness, setYAwareness] = createSignal<Y.Doc>(new Y.Doc())
+  const [newYAwareness, setNewYAwareness] = createSignal<awarenessProtocol.Awareness>();
   const [doc, setDoc] = createSignal<Doc>()
   const [awareness, setAwareness] = createSignal<Awareness>()
   setupYjsEvents()
@@ -1176,11 +1223,11 @@ export const Workspace = () => {
   const activeLanguage = createMemo(() => doc()?.activeLanguage)
 
   const whiteboardJsx = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
-    <Whiteboard yWhiteboard={(yDoc().getMap().get("whiteboard")) as WhiteboardProps["yWhiteboard"]} />
+    <Whiteboard yWhiteboard={(yDoc().getMap().get("whiteboard")) as WhiteboardProps["yWhiteboard"]} yAwareness={newYAwareness()} />
   </Show>
 
   const codeJsx = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
-    <CodeEditor language={activeLanguage()} yCode={(yDoc().getMap<any>().get("languageCodeMap")).get(activeLanguage())} />
+    <CodeEditor language={activeLanguage()} yCode={(yDoc().getMap<any>().get("languageCodeMap")).get(activeLanguage())} yAwareness={newYAwareness()} />
   </Show>
 
   const consoleJsx = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
@@ -1412,6 +1459,10 @@ export const Workspace = () => {
     yAwareness().transact(() => {
       (yAwareness().getMap().get("collaborators") as Y.Map<any>).get(user().id).set("name", name)
     }, { type: 'updateUserName' })
+    newYAwareness().setLocalStateField('user', {
+      ...newYAwareness().getLocalState().user,
+      name: name,
+    })
   }
 
   const copyRoomLink = async () => {

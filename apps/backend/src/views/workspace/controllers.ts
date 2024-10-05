@@ -9,6 +9,7 @@ import { Role, Doc, Awareness, Language } from "@ide/shared/src/lib/types"
 import { fromBase64ToUint8Array, fromUint8ArrayToBase64, LangToPistonLangMap } from "@ide/shared/src/lib/helpers"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
 import { isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
+import * as awarenessProtocol from 'y-protocols/awareness.js'
 
 
 const getUserRole = (userId: string, document: {owner: string, sharing: boolean}): Role => {
@@ -18,7 +19,7 @@ const getUserRole = (userId: string, document: {owner: string, sharing: boolean}
 }
 
 type Room = {
-  yDoc: Y.Doc,  yAwareness: Y.Doc, 
+  yDoc: Y.Doc,  yAwareness: Y.Doc, newYAwareness: awarenessProtocol.Awareness,
   prevDoc: Doc, doc: Doc, prevAwareness: Awareness, awareness: Awareness, 
   userIdSocketMap: {[userId: string]: WebSocket}, 
   updateDocNameState: ApiState, 
@@ -90,9 +91,11 @@ const newRoom = (document): Room => {
   const doc = yDoc.getMap().toJSON() as any
   const yAwareness = newAwareness()
   const awareness = yAwareness.getMap().toJSON() as any
+  const newYAwareness = new awarenessProtocol.Awareness(yDoc)
+
   const now = new Date().toISOString();
   return {
-    yDoc, yAwareness,
+    yDoc, yAwareness, newYAwareness,
     prevDoc:  doc, doc, prevAwareness: awareness, awareness,
     userIdSocketMap: {},
     updateDocNameState: ApiState.NOT_LOADED,
@@ -239,7 +242,7 @@ const addNewRoom = (document) => {
   const room = newRoom(document)
   rooms[document.id] = room
 
-  const {yDoc, yAwareness} = room
+  const {yDoc, yAwareness, newYAwareness} = room
 
   yDoc.on("update", (update, _, __, tr) => {
     const {author = null, type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
@@ -270,6 +273,25 @@ const addNewRoom = (document) => {
     room.awareness = yAwareness.getMap().toJSON() as any
     console.log('awareness update', room.awareness)
     room.updatedAt = new Date().toISOString()
+  })
+
+  newYAwareness.on('update', ({ added, updated, removed }, origin, t) => {
+    const {author = null, type = null, ...data} = !isNullOrUndefined(origin) && typeof origin === "object" ? origin : {}
+    if (!author) {
+      // author is null when server awareness is updated, no need to broadcast that
+      return
+    }
+    console.log('onNewYjsAwarenessUpdate', {added, updated, removed}, origin)
+
+    const changedClients: number[] = added.concat(updated).concat(removed)
+    const base64Update = fromUint8ArrayToBase64(awarenessProtocol.encodeAwarenessUpdate(newYAwareness, changedClients))
+    const message = {type, data, newAwarenessDelta: base64Update}
+    sendMessageToOthers(room, JSON.stringify(message), author)
+    
+    // room.prevAwareness = room.awareness
+    // room.awareness = yAwareness.getMap().toJSON() as any
+    // console.log('awareness update', room.awareness)
+    // room.updatedAt = new Date().toISOString()
   })
 }
 
@@ -341,7 +363,7 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
 
   // Session specific variables
   const room = rooms[documentId]
-  const {yDoc, yAwareness, userIdSocketMap} = room;
+  const {yDoc, yAwareness, newYAwareness, userIdSocketMap} = room;
   const role = getUserRole(user.id, yDocToJson(room.yDoc));
   ws.send(JSON.stringify({type: 'init', data: {user, role, yDoc: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yDoc)), yAwareness: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yAwareness))}}))
 
@@ -352,6 +374,8 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
   collaborator.set("name", user.name);
   collaborator.set("joinedOn", new Date().toISOString());
   (yAwareness.getMap().get("collaborators") as any).set(user.id, collaborator)
+
+  // Add the new collaborator info to yjs awareness also
 
   const _updateUserName = async () => {
     if (updateUserNameState === ApiState.LOADING) {
@@ -504,13 +528,16 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
 
   ws.on('message', (event) => {
     const message = JSON.parse(event.toString())
-    const {type, data, docDelta, awarenessDelta} = message
+    const {type, data, docDelta, awarenessDelta, newAwarenessDelta} = message
 
     if (docDelta) {
       Y.applyUpdate(yDoc, fromBase64ToUint8Array(docDelta), {author: user.id, type, data})
     }
     if (awarenessDelta) {
       Y.applyUpdate(yAwareness, fromBase64ToUint8Array(awarenessDelta), {author: user.id, type, data})
+    }
+    if (newAwarenessDelta) {
+      awarenessProtocol.applyAwarenessUpdate(newYAwareness, fromBase64ToUint8Array(newAwarenessDelta), {author: user.id, type, data})
     }
 
     switch (type) {

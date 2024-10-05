@@ -21,7 +21,7 @@ import { Language } from "@ide/shared/src/lib/types";
 export type CodeEditorProps = {
   language: Language;
   yCode: Y.Text;
-  awareness?: Awareness,
+  yAwareness: Awareness,
 }
 
 const languageSpecificExtensions = (language: Language) => {
@@ -101,7 +101,7 @@ export const CodeEditor = (props: CodeEditorProps) => {
       ...languageSpecificExtensions(props.language),
 
       // yjs extension
-      yCollab(props.yCode, null, {undoManager:  new Y.UndoManager(props.yCode)})
+      yCollab(props.yCode, props.yAwareness, {undoManager:  new Y.UndoManager(props.yCode)})
     ];
 
     state = EditorState.create({

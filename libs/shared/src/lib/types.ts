@@ -17,9 +17,6 @@ export type Collaborator = {
   id: string, 
   name?: string;
   joinedOn: string;
-  codeEditorPosition?: any, 
-  whiteboardPosition?: any, 
-  activeElement?: "code-editor" | "whiteboard" | null
 }
 
 type Console = {

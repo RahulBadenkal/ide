@@ -7,14 +7,13 @@ import * as Y from 'yjs'
 
 import './Whiteboard.styles.scss';
 import { applyOperations, getDeltaOperationsForYjs } from "./diff";
-import { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
+import { Collaborator as ExcalidrawCollaborator, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
 import { yjsToExcalidraw } from "./utils";
+import * as awarenessProtocol from "y-protocols/awareness.js";
 
 export type WhiteboardProps = {
   yWhiteboard: Y.Array<Y.Map<ExcalidrawElement | string>>,  // {el: ExcalidrawElement, pos: string}
-  collaborators?: any, // SceneData["collaborators"],
-
-  onCursorUpdate?: any
+  yAwareness: awarenessProtocol.Awareness,
 };
 
 
@@ -33,6 +32,7 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
   const [lastKnownElements, setLastKnownElements] = createSignal<ExcalidrawElement[]>(initialData);
   const [lastKnownSceneVersion, setLastKnownSceneVersion] = createSignal<number>(getSceneVersion(initialData));
   let root: ReturnType<typeof createRoot>;
+  let collaborators: Map<string, ExcalidrawCollaborator> = new Map();
 
   const observer = (event: any, transaction: {origin: string}) => {
     if (transaction.origin === componentId) {
@@ -51,6 +51,48 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
   }
   props.yWhiteboard.observeDeep(observer)
 
+  const awarenessChangeHandler = ({
+    added,
+    updated,
+    removed,
+  }: {
+    added: number[];
+    updated: number[];
+    removed: number[];
+  }) => {
+    const states = props.yAwareness.getStates();
+
+    const _collaborators = new Map(collaborators);
+    const update = [...added, ...updated];
+    for (const id of update) {
+      const state = states.get(id);
+      if (!state) {
+        continue;
+      }
+
+      _collaborators.set(id.toString(), {
+        pointer: state.pointer,
+        button: state.button,
+        selectedElementIds: state.selectedElementIds,
+        username: state.user?.name,
+        color: state.user?.color,
+        avatarUrl: state.user?.avatarUrl,
+        userState: state.user?.state,
+      });
+    }
+    for (const id of removed) {
+      _collaborators.delete(id.toString());
+    }
+    _collaborators.delete(props.yAwareness.clientID.toString()); 
+    collaborators = _collaborators;
+    if (excalidrawAPI()) {
+      excalidrawAPI().updateScene({
+        collaborators,
+      });
+    }
+  };
+  props.yAwareness.on("change", awarenessChangeHandler);
+
   onMount(() => {
     if (whiteboardRef()) {
       root = createRoot(whiteboardRef()!);
@@ -64,12 +106,7 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
     }
   });
 
-  createEffect(() => {
-    if (props.collaborators && excalidrawAPI()) {
-      const collaborators = new Map(Object.entries(props.collaborators)); 
-      excalidrawAPI().updateScene({collaborators})
-    }
-  })
+  createEffect(() => {})
 
   const renderExcalidraw = () => {
     root.render(
@@ -80,9 +117,10 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
         },
         excalidrawAPI: (api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api),
         onPointerUpdate(payload) {
-          props.onCursorUpdate?.(payload)
+          props.yAwareness.setLocalStateField("pointer", payload.pointer);
+          this.awareness?.setLocalStateField("button", payload.button);
         },
-        onChange: (_elements) => {
+        onChange: (_elements, _state) => {
           // console.log('changed', _elements)
           const sceneVersion = getSceneVersion(_elements)
           if (sceneVersion <= lastKnownSceneVersion()) {
@@ -99,6 +137,12 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
           setLastKnownSceneVersion(sceneVersion)
 
           // console.log(JSON.parse(JSON.stringify(yjsToExcalidraw(props.yArray))))
+
+          // update awareness
+          props.yAwareness.setLocalStateField(
+            "selectedElementIds",
+            _state.selectedElementIds,
+          );
         },
       })
     )
