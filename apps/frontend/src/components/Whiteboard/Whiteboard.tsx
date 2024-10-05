@@ -92,6 +92,8 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
     }
   };
   props.yAwareness.on("change", awarenessChangeHandler);
+  // called to set collaboraters propery on init
+  awarenessChangeHandler({added: Array.from(props.yAwareness.getStates().keys()), updated: [], removed: []})
 
   onMount(() => {
     if (whiteboardRef()) {
@@ -106,14 +108,13 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
     }
   });
 
-  createEffect(() => {})
 
   const renderExcalidraw = () => {
     root.render(
       React.createElement(Excalidraw, {
         initialData: {
           elements: lastKnownElements(),
-          appState: { viewBackgroundColor: '#FFFFFF' },
+          appState: { viewBackgroundColor: '#FFFFFF', collaborators },
         },
         excalidrawAPI: (api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api),
         onPointerUpdate(payload) {

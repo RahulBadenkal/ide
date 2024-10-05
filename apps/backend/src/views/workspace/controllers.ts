@@ -275,19 +275,18 @@ const addNewRoom = (document) => {
     room.updatedAt = new Date().toISOString()
   })
 
-  newYAwareness.on('update', ({ added, updated, removed }, origin, t) => {
+  newYAwareness.on('change', ({ added, updated, removed }, origin, t) => {
     console.log('onNewYjsAwarenessUpdate', {added, updated, removed}, origin)
     const {author = null, type = null, ...data} = !isNullOrUndefined(origin) && typeof origin === "object" ? origin : {}
 
-    const changedClients: number[] = added.concat(updated).concat(removed)
+    const changedClients: number[] = added.concat(updated)
+      .filter((x) => x !== newYAwareness.clientID)  // Ignore changes by server
+      .concat(removed)
     const base64Update = fromUint8ArrayToBase64(awarenessProtocol.encodeAwarenessUpdate(newYAwareness, changedClients))
     const message = {type, data, newAwarenessDelta: base64Update}
     sendMessageToOthers(room, JSON.stringify(message), author)
-    
-    // room.prevAwareness = room.awareness
-    // room.awareness = yAwareness.getMap().toJSON() as any
-    // console.log('awareness update', room.awareness)
-    // room.updatedAt = new Date().toISOString()
+  
+    room.updatedAt = new Date().toISOString()
   })
 }
 
@@ -361,7 +360,15 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
   const room = rooms[documentId]
   const {yDoc, yAwareness, newYAwareness, userIdSocketMap} = room;
   const role = getUserRole(user.id, yDocToJson(room.yDoc));
-  ws.send(JSON.stringify({type: 'init', data: {user, role, yDoc: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yDoc)), yAwareness: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yAwareness))}}))
+  ws.send(JSON.stringify({type: 'init', data: {user, role, 
+    yDoc: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yDoc)), 
+    yAwareness: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yAwareness)),
+    newYAwareness: fromUint8ArrayToBase64(awarenessProtocol.encodeAwarenessUpdate(
+      newYAwareness,
+      Array.from(newYAwareness.getStates().keys())
+      .filter((x) => x !== newYAwareness.clientID)  // Ignore the server awareness
+    ))
+  }}))
 
   userIdSocketMap[user.id] = ws
 
@@ -601,6 +608,12 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
     if (yAwareness) {
       (yAwareness.getMap().get("collaborators") as any).delete(user.id)
       delete userIdSocketMap[user.id]
+    }
+    if (newYAwareness) {
+      const yjsClientId = Array.from(newYAwareness.getStates().keys()).find((x) => newYAwareness.getStates().get(x).user?.id === user.id)
+      if (yjsClientId) {
+        awarenessProtocol.removeAwarenessStates(newYAwareness, [+yjsClientId] , {author: user.id})
+      }
     }
   })
 }

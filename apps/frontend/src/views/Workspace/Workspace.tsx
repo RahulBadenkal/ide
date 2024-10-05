@@ -222,7 +222,9 @@ export const Workspace = () => {
 
         Y.applyUpdate(yDoc(), fromBase64ToUint8Array(data.yDoc))
         Y.applyUpdate(yAwareness(), fromBase64ToUint8Array(data.yAwareness))
+        awarenessProtocol.applyAwarenessUpdate(newYAwareness(), fromBase64ToUint8Array(data.newYAwareness), null)
         newYAwareness().setLocalStateField('user', {
+          id: user().id,
           name: user().name,
 
           // used by code mirror
