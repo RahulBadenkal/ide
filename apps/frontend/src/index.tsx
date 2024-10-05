@@ -29,10 +29,12 @@ if (!getCookie('x-user-id')) {
 const root = document.getElementById('root')
 
 const App = (props: any) => {
+  console.log('INIT')
   const location = useLocation();  // Get the current location from the router
 
   // Track page views globally in one place
   createEffect(() => {
+    console.log('on page view change')
     posthog.capture('$pageview', { path: location.pathname });
   });
   
