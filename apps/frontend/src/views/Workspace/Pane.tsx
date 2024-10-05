@@ -46,6 +46,7 @@ export const Pane = (props: PaneProps) => {
   let startX: number
   let startY: number
   const dragDelta = 6;
+  const widthTolerance = 0.5
 
   const downListener = (e: MouseEvent) => {
     // console.log('downListener')
@@ -86,13 +87,13 @@ export const Pane = (props: PaneProps) => {
 
   const collapsed = createMemo(() => {
     if (!props.dragDirection) return false
-    const tolerance = 0.5
-    const isCollapsed = props.dragDirection === "horizontal" ? size.width <= (minSize + tolerance) : size.height <= (minSize + tolerance)
+    debugger
+    const isCollapsed = props.dragDirection === "horizontal" ? size.width <= (minSize + widthTolerance) : size.height <= (minSize + widthTolerance)
     return isCollapsed
   })
 
   createEffect(() => {
-    props.collapseStatus({horizontal: size.width <= minSize, vertical: size.height <= minSize})
+    props.collapseStatus({horizontal: size.width <= (minSize + widthTolerance), vertical: (size.height <= minSize + widthTolerance)})
   })
 
   return <div ref={setTarget} data-pane-id={props.id} class={`${orientation()} relative group pane w-full h-full flex flex-col overflow-hidden [&.oriented]:flex-row ${props.class || ''}`} style={`border-radius: 8px; box-sizing: border-box; ${props.style || ''}`}>
