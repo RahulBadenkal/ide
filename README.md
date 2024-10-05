@@ -16,4 +16,4 @@ This release focuses on building essential tools for seamless real-time collabor
 - **Data Persistence:** Stores and retrieves workspace data from the database. 
 - **Permission Levels:** Turn on/off sharing to give access others access to your workspaces   
 - **Customizable Layout:** Drag drop panes to reorder the layout as per your preference.  
-**Peer Cursor Support:** Real-time visibility of collaborator's cursors in the whiteboard and code editor.
+- **Peer Cursor Support:** Real-time visibility of collaborator's cursors in the whiteboard and code editor.
