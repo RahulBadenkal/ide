@@ -374,7 +374,7 @@ export const Workspace = () => {
   }
 
   const onNewYjsAwarenessUpdate = ({ added, updated, removed }, s, t) => {
-    console.log('onNewYjsAwarenessUpdate', {added, updated, removed})
+    // console.log('onNewYjsAwarenessUpdate', {added, updated, removed})
     const changedClients: number[] = added.concat(updated).concat(removed)
     if (changedClients.findIndex((x) => x === newYAwareness().clientID) >= 0) {
       // broadcast local changes
