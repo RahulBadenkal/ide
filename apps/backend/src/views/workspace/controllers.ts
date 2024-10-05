@@ -276,12 +276,8 @@ const addNewRoom = (document) => {
   })
 
   newYAwareness.on('update', ({ added, updated, removed }, origin, t) => {
-    const {author = null, type = null, ...data} = !isNullOrUndefined(origin) && typeof origin === "object" ? origin : {}
-    if (!author) {
-      // author is null when server awareness is updated, no need to broadcast that
-      return
-    }
     console.log('onNewYjsAwarenessUpdate', {added, updated, removed}, origin)
+    const {author = null, type = null, ...data} = !isNullOrUndefined(origin) && typeof origin === "object" ? origin : {}
 
     const changedClients: number[] = added.concat(updated).concat(removed)
     const base64Update = fromUint8ArrayToBase64(awarenessProtocol.encodeAwarenessUpdate(newYAwareness, changedClients))
