@@ -13,7 +13,7 @@ This release focuses on improving the editor capabilities by adding LSP support
 
 
 ### ✅ v1.0
-This release focuses on building essential tools for seamless real-time collaboration, enabling users to manage and share workspaces and interact through a coding environment and other tools like a shared whiteboard. Below is a detailed list of the completed and pending features for version 1.0:
+This release focuses on building essential tools for seamless real-time collaboration, enabling users to manage and share workspaces and interact through a coding environment and other tools like a shared whiteboard. Below is a detailed list of features for version 1.0:
 
 #### Features
 - **Basic Layout:** Provides the initial structure and user interface.  
