@@ -1,0 +1,15 @@
+{
+  "name": "@ide/lsp-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "start": "cd dist && node --enable-source-maps index.mjs",
+    "dev": "tsx watch --env-file=.env ./src/main.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

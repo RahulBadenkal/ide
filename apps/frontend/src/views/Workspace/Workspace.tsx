@@ -1,6 +1,6 @@
 import { batch, createMemo, createSignal, For, Match, onMount, Show, SplitProps, Switch } from "solid-js"
 import { ApiLoadInfo, ApiState } from "@ide/ts-utils/src/lib/types"
-import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL } from "@/helpers/constants";
+import { BACKEND_HTTP_BASE_URL, BACKEND_SOCKET_BASE_URL, LSP_SERVER_SOCKET_BASE_URL } from "@/helpers/constants";
 import { useNavigate, useParams } from "@solidjs/router";
 import { deepClone, formUrl, isNullOrUndefined, sleep } from "@ide/ts-utils/src/lib/utils";
 import { getCookie } from "@ide/browser-utils/src/lib/utils";
@@ -317,6 +317,32 @@ export const Workspace = () => {
     socket().removeEventListener("close", onSocketClose)
   }
 
+  const onLspSocketOpen = (event: Event) => {
+    console.log('Connected to LSP WebSocket server', event);
+  }
+
+  const onLspSocketMessage = (event) => {
+    const message = JSON.parse(event.data)
+    console.log(message)
+  }
+
+  const onLspSocketError = (error: Event) => {
+    console.error('LSP WebSocket error', error);
+  }
+
+  const onLspSocketClose = async () => {
+    if (pageLoadApiInfo().state === ApiState.LOADED && socketRetryCount() < 3 && !(socketLoadInfo().error?.status || 500).toString().startsWith("4")) {
+      return setupLspSocket(true)
+    }
+  }
+
+  const closeLspSocketEvents = () => {
+    lspSocket().removeEventListener("open", onLspSocketOpen)
+    lspSocket().removeEventListener("message", onLspSocketMessage)
+    lspSocket().removeEventListener("error", onLspSocketError)
+    lspSocket().removeEventListener("close", onLspSocketClose)
+  }
+
   const setupSocket = async (retry = false) => {
     // TODO: Take care of case when error / close events for an older socket fires when new socket is created
     if (socket()) {
@@ -343,6 +369,30 @@ export const Workspace = () => {
     _socket.onmessage = onSocketMessage
     _socket.onerror = onSocketError
     _socket.onclose = onSocketClose
+  }
+
+  const setupLspSocket = async (retry = false) => {
+    // TODO: Take care of case when error / close events for an older socket fires when new socket is created
+    if (lspSocket()) {
+      if (lspSocket().readyState === WebSocket.OPEN) {
+        lspSocket().close()
+        closeLspSocketEvents()
+      }
+    }
+
+    setLspSocketRetryCount(lspSocketRetryCount() + 1)
+    setLspSocketLoadInfo({ state: ApiState.LOADING })
+    if (retry) {
+      await sleep(1000)
+    }
+    const _socket = new WebSocket(formUrl({ basePath: LSP_SERVER_SOCKET_BASE_URL, otherPath: "/", params: { language: 'js' } }))
+    setLspSocket(_socket)
+
+    // Add listeners
+    _socket.onopen = onLspSocketOpen
+    _socket.onmessage = onLspSocketMessage
+    _socket.onerror = onLspSocketError
+    _socket.onclose = onLspSocketClose
   }
 
 
@@ -1195,6 +1245,11 @@ export const Workspace = () => {
   const [socket, setSocket] = createSignal<WebSocket>()
   const [socketLoadInfo, setSocketLoadInfo] = createSignal<ApiLoadInfo>()
   const [socketRetryCount, setSocketRetryCount] = createSignal<number>(0)
+
+  const [lspSocket, setLspSocket] = createSignal<WebSocket>()
+  const [lspSocketRetryCount, setLspSocketRetryCount] = createSignal<number>(0)
+  const [lspSocketLoadInfo, setLspSocketLoadInfo] = createSignal<ApiLoadInfo>()
+
   const [pageLoadApiInfo, setPageLoadApiInfo] = createSignal<ApiLoadInfo>({ state: ApiState.LOADING })
   const [user, setUser] = createSignal<any>()
   const [role, setRole] = createSignal<Role>()
@@ -1391,6 +1446,7 @@ export const Workspace = () => {
   
   // events
   setupSocket()
+  // setupLspSocket()
 
   onMount(() => {
     recreateSplits()

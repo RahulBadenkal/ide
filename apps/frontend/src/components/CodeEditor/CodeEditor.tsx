@@ -18,6 +18,11 @@ import {Awareness} from 'y-protocols/awareness.js'
 import './CodeEditor.styles.scss'
 import { Language } from "@ide/shared/src/lib/types";
 
+import { languageServer } from "./lsp"
+import { WebSocketTransport } from "@open-rpc/client-js";
+import { LSP_SERVER_SOCKET_BASE_URL } from "@/helpers/constants";
+
+
 export type CodeEditorProps = {
   language: Language;
   yCode: Y.Text;
@@ -77,6 +82,15 @@ export const CodeEditor = (props: CodeEditorProps) => {
       },
     ];
 
+    const ls = languageServer({
+      // WebSocket server uri and other client options.
+      serverUri: LSP_SERVER_SOCKET_BASE_URL,
+      rootUri: 'file:///',
+      workspaceFolders: null,
+      documentUri: `file:///${`main.js`}`,
+      languageId: 'javascript' // As defined at https://microsoft.github.io/language-server-protocol/specification#textDocumentItem.
+    });
+
     const extensions: Extension = [
       lineNumbers(),
       highlightActiveLineGutter(),
@@ -90,7 +104,7 @@ export const CodeEditor = (props: CodeEditorProps) => {
       syntaxHighlighting(defaultHighlightStyle, {fallback: true}),
       bracketMatching(),
       closeBrackets(),
-      // autocompletion(),
+      autocompletion(),
       rectangularSelection(),
       crosshairCursor(),
       highlightActiveLine(),
@@ -101,7 +115,10 @@ export const CodeEditor = (props: CodeEditorProps) => {
       ...languageSpecificExtensions(props.language),
 
       // yjs extension
-      yCollab(props.yCode, props.yAwareness, {undoManager:  new Y.UndoManager(props.yCode)})
+      yCollab(props.yCode, props.yAwareness, {undoManager:  new Y.UndoManager(props.yCode)}),
+
+      // lsp extension
+      ls
     ];
 
     state = EditorState.create({

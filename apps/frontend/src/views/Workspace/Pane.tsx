@@ -87,7 +87,6 @@ export const Pane = (props: PaneProps) => {
 
   const collapsed = createMemo(() => {
     if (!props.dragDirection) return false
-    debugger
     const isCollapsed = props.dragDirection === "horizontal" ? size.width <= (minSize + widthTolerance) : size.height <= (minSize + widthTolerance)
     return isCollapsed
   })

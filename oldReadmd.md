@@ -108,6 +108,7 @@ For LSP (workers and sockets)
 - For socket look at this -> https://github.com/TypeFox/monaco-languageclient/blob/main/packages/examples/src/bare/client.ts
 - TODO: Find how to load file for custom syntax highlighting
 
+- A good summary of state of lsp in codemirror - https://discuss.codemirror.net/t/state-of-lsps-in-codemirror-reference/8601
 
 Architecture doc
 - How to bundle monaco (4 parts, main editor, additional, func, syntax highligting, lsp)

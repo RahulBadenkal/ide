@@ -65,6 +65,40 @@
             ],
 
             "preLaunchTask": "delete-backend-dist"
+        },
+        {
+            "name": "lsp-server",
+            "type": "node",
+            "request": "launch",
+        
+            // Debug current file in VSCode
+            "cwd": "${workspaceFolder}/apps/lsp-server",
+            "program": "./src/main.ts",
+        
+            /*
+             * Path to tsx binary
+             * Assuming locally installed
+             */
+            "runtimeExecutable": "tsx",
+            "runtimeArgs": ["watch", "--inspect", "--env-file=.env"],
+        
+            /*
+             * Open terminal when debugging starts (Optional)
+             * Useful to see console.logs
+             */
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "neverOpen",
+        
+            // Files to exclude from debugger (e.g. call stack)
+            "skipFiles": [
+                // Node.js internal core modules
+                "<node_internals>/**",
+        
+                // Ignore all dependencies (optional)
+                "${workspaceFolder}/node_modules/**"
+            ],
+
+            "preLaunchTask": "delete-lsp-server-dist"
         }
     ]
 }
