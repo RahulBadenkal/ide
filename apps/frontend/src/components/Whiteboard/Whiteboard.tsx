@@ -7,7 +7,7 @@ import * as Y from 'yjs'
 import './Whiteboard.styles.scss';
 import { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
 import { ExcalidrawBinding, yjsToExcalidraw } from "y-excalidraw"
-import * as awarenessProtocol from "y-protocols/awareness.js";
+import type * as awarenessProtocol from "y-protocols/awareness.js";
 
 export type WhiteboardProps = {
   yElements: Y.Array<Y.Map<any>>,  // {el: ExcalidrawElement, pos: string}
