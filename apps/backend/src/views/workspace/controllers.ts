@@ -51,7 +51,11 @@ const newDoc = (document: any) => {
   rootMap.set('languageCodeMap', languageCodeMap);
 
   // whiteboard
-  const whiteboard = new Y.Array();
+  const elements = new Y.Array();
+  const assets = new Y.Map();
+  const whiteboard = new Y.Map();
+  whiteboard.set("elements", elements)
+  whiteboard.set("assets", assets)
   rootMap.set('whiteboard', whiteboard);
  
   return yDoc

@@ -1274,7 +1274,11 @@ export const Workspace = () => {
   const activeLanguage = createMemo(() => doc()?.activeLanguage)
 
   const whiteboardJsx = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>
-    <Whiteboard yWhiteboard={(yDoc().getMap().get("whiteboard")) as WhiteboardProps["yWhiteboard"]} yAwareness={newYAwareness()} />
+    <Whiteboard 
+      yElements={(yDoc().getMap<any>().get("whiteboard").get("elements"))}
+      yAssets={(yDoc().getMap<any>().get("whiteboard").get("assets"))} 
+      yAwareness={newYAwareness()} 
+    />
   </Show>
 
   const codeJsx = <Show when={pageLoadApiInfo().state === ApiState.LOADED}>

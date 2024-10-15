@@ -1,155 +1,97 @@
-import { createSignal, onMount, createEffect, type Component } from "solid-js";
+import { createSignal, onMount, createEffect, type Component, onCleanup } from "solid-js";
 import { createRoot } from 'react-dom/client';
 import React from 'react';
 import { Excalidraw  } from "@excalidraw/excalidraw";
-import { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
 import * as Y from 'yjs'
 
 import './Whiteboard.styles.scss';
-import { applyOperations, getDeltaOperationsForYjs } from "./diff";
-import { Collaborator as ExcalidrawCollaborator, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
-import { yjsToExcalidraw } from "./utils";
+import { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
+import { ExcalidrawBinding, yjsToExcalidraw } from "y-excalidraw"
 import * as awarenessProtocol from "y-protocols/awareness.js";
 
 export type WhiteboardProps = {
-  yWhiteboard: Y.Array<Y.Map<ExcalidrawElement | string>>,  // {el: ExcalidrawElement, pos: string}
+  yElements: Y.Array<Y.Map<any>>,  // {el: ExcalidrawElement, pos: string}
+  yAssets: Y.Map<any>
   yAwareness: awarenessProtocol.Awareness,
 };
 
-
-const getSceneVersion = (elements: readonly ExcalidrawElement[]) => {
-  return elements.reduce((acc, x) => acc + x.version, 0)
-}
-
-// TODO: Add support when a new instance of y.Array is passed
 export const Whiteboard: Component<WhiteboardProps> = (props) => {
-  const componentId = crypto.randomUUID()
-
-  const [whiteboardRef, setWhiteboardRef] = createSignal<HTMLElement | undefined>();
+  const [containerRef, setContainerRef] = createSignal<HTMLElement | undefined>();
+  const [excalidrawRef, setExcalidrawRef] = createSignal<any>();
   const [excalidrawAPI, setExcalidrawAPI] = createSignal<ExcalidrawImperativeAPI | undefined>();
 
-  const initialData = yjsToExcalidraw(props.yWhiteboard)
-  const [lastKnownElements, setLastKnownElements] = createSignal<ExcalidrawElement[]>(initialData);
-  const [lastKnownSceneVersion, setLastKnownSceneVersion] = createSignal<number>(getSceneVersion(initialData));
   let root: ReturnType<typeof createRoot>;
-  let collaborators: Map<string, ExcalidrawCollaborator> = new Map();
+  let observer: MutationObserver
+  let binding: ExcalidrawBinding
 
-  const observer = (event: any, transaction: {origin: string}) => {
-    if (transaction.origin === componentId) {
-      return
-    }
-
-    // console.log('remote changes')
-    // elements changed outside this component, reflect the change in excalidraw ui
-    const _elements = yjsToExcalidraw(props.yWhiteboard)
-    setLastKnownElements(_elements)
-    setLastKnownSceneVersion(getSceneVersion(_elements))
-    if (excalidrawAPI()) {
-      excalidrawAPI().updateScene({elements: _elements})
-    }
-    // console.log(JSON.parse(JSON.stringify(_elements)))
-  }
-  props.yWhiteboard.observeDeep(observer)
-
-  const awarenessChangeHandler = ({
-    added,
-    updated,
-    removed,
-  }: {
-    added: number[];
-    updated: number[];
-    removed: number[];
-  }) => {
-    const states = props.yAwareness.getStates();
-
-    const _collaborators = new Map(collaborators);
-    const update = [...added, ...updated];
-    for (const id of update) {
-      const state = states.get(id);
-      if (!state) {
-        continue;
-      }
-
-      _collaborators.set(id.toString(), {
-        pointer: state.pointer,
-        button: state.button,
-        selectedElementIds: state.selectedElementIds,
-        username: state.user?.name,
-        color: state.user?.color,
-        avatarUrl: state.user?.avatarUrl,
-        userState: state.user?.state,
-      });
-    }
-    for (const id of removed) {
-      _collaborators.delete(id.toString());
-    }
-    _collaborators.delete(props.yAwareness.clientID.toString()); 
-    collaborators = _collaborators;
-    if (excalidrawAPI()) {
-      excalidrawAPI().updateScene({
-        collaborators,
-      });
-    }
-  };
-  props.yAwareness.on("change", awarenessChangeHandler);
-  // called to set collaboraters propery on init
-  awarenessChangeHandler({added: Array.from(props.yAwareness.getStates().keys()), updated: [], removed: []})
-
-  onMount(() => {
-    if (whiteboardRef()) {
-      root = createRoot(whiteboardRef()!);
-      renderExcalidraw();
-    }
-  });
+  onMount(() => {});
 
   createEffect(() => {
-    if (root) {
+    if (containerRef()) {
+      // Draw excalidraw on dom
+      root = createRoot(containerRef());
       renderExcalidraw();
-    }
-  });
 
+      // Observe when excalidraw is added to dom
+      if (observer) {
+        observer.disconnect()
+      }
+      observer = new MutationObserver(function(mutations, observer) {
+        for (const mutation of mutations) {
+          if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+            mutation.addedNodes.forEach((node) => {
+              if (node.nodeType === Node.ELEMENT_NODE && (node as any).classList.contains('excalidraw-container')) {
+                setExcalidrawRef(node as any)
+                observer.disconnect()
+              }
+            });
+          }
+        }
+      })
+      observer.observe(containerRef(), {childList: true});
+    }
+  })
+
+  createEffect(() => {
+    if (excalidrawAPI() && excalidrawRef()) {
+      if (binding) {
+        binding.destroy()
+      }
+
+      binding = new ExcalidrawBinding(
+        props.yElements,
+        props.yAssets,
+        excalidrawRef(),
+        excalidrawAPI(),
+        props.yAwareness,
+        new Y.UndoManager(props.yElements),
+      );
+    } 
+  })
 
   const renderExcalidraw = () => {
     root.render(
       React.createElement(Excalidraw, {
         initialData: {
-          elements: lastKnownElements(),
-          appState: { viewBackgroundColor: '#FFFFFF', collaborators },
+          elements: yjsToExcalidraw(props.yElements),
+          appState: { viewBackgroundColor: '#FFFFFF' },
         },
         excalidrawAPI: (api: ExcalidrawImperativeAPI) => setExcalidrawAPI(api),
-        onPointerUpdate(payload) {
-          props.yAwareness.setLocalStateField("pointer", payload.pointer);
-          this.awareness?.setLocalStateField("button", payload.button);
-        },
-        onChange: (_elements, _state) => {
-          // console.log('changed', _elements)
-          const sceneVersion = getSceneVersion(_elements)
-          if (sceneVersion <= lastKnownSceneVersion()) {
-            // This fires very often even when data is not changed. so keeping a fast procedure to check if anything changed or not
-            // The logic is taken from excliadraw repo
-            return
-          }
-          
-          _elements = _elements.filter((x) => !x.isDeleted)  // yjs will track deleted elements, so no need to keep it here
-          const operations = getDeltaOperationsForYjs(lastKnownElements(), _elements)
-          applyOperations(props.yWhiteboard, operations, componentId)
-
-          setLastKnownElements(_elements.map((x) => ({...x})))  // actually we only need id, version. rest all can be ignored
-          setLastKnownSceneVersion(sceneVersion)
-
-          // console.log(JSON.parse(JSON.stringify(yjsToExcalidraw(props.yArray))))
-
-          // update awareness
-          props.yAwareness.setLocalStateField(
-            "selectedElementIds",
-            _state.selectedElementIds,
-          );
-        },
+        onPointerUpdate: (payload) => binding && binding.onPointerUpdate(payload),
       })
     )
   };
 
+  onCleanup(() => {
+    if (observer) {
+      observer.disconnect()
+    }
+    if (binding) {
+      binding.destroy()
+    }
+  })
+
   return (
-    <div ref={setWhiteboardRef} class="whiteboard"></div>
+    <div ref={setContainerRef} class="whiteboard"></div>
   );
 };
