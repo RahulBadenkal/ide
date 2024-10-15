@@ -22,6 +22,7 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
 
   let root: ReturnType<typeof createRoot>;
   let observer: MutationObserver
+  let undoManager: Y.UndoManager;
   let binding: ExcalidrawBinding
 
   onMount(() => {});
@@ -54,17 +55,24 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
 
   createEffect(() => {
     if (excalidrawAPI() && excalidrawRef()) {
+      if (undoManager) {
+        undoManager.destroy()
+      }
       if (binding) {
         binding.destroy()
       }
-
+      
+      // Edits from peers(server) comes with origin as null and by default undoManager tracks null origin, 
+      // so removing that so that it doesn't consider that in the user's local undo-redo cache
+      undoManager = new Y.UndoManager(props.yElements, {trackedOrigins: new Set()})   
+ 
       binding = new ExcalidrawBinding(
         props.yElements,
         props.yAssets,
-        excalidrawRef(),
+        containerRef(),
         excalidrawAPI(),
         props.yAwareness,
-        new Y.UndoManager(props.yElements),
+        undoManager,
       );
     } 
   })

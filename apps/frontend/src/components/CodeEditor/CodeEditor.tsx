@@ -60,12 +60,20 @@ export const CodeEditor = (props: CodeEditorProps) => {
 
   let state: EditorState
   let view: EditorView
+  let undoManager: Y.UndoManager
 
   const recreate = () => {
     console.log("Recreate code editor")
     if (view) {
       view.destroy()
     }
+    if (undoManager) {
+      undoManager.destroy()
+    }
+    // TODO: Local undo redo not working in codemirror-yjs
+    undoManager = new Y.UndoManager(props.yCode, {trackedOrigins: new Set()})   
+    const yCollabExtension = yCollab(props.yCode, props.yAwareness, {undoManager})
+
 
     const keyCommands = [
       ...closeBracketsKeymap,
@@ -90,7 +98,7 @@ export const CodeEditor = (props: CodeEditorProps) => {
       documentUri: `file:///${`main.js`}`,
       languageId: 'javascript' // As defined at https://microsoft.github.io/language-server-protocol/specification#textDocumentItem.
     });
-
+    
     const extensions: Extension = [
       lineNumbers(),
       highlightActiveLineGutter(),
@@ -115,7 +123,7 @@ export const CodeEditor = (props: CodeEditorProps) => {
       ...languageSpecificExtensions(props.language),
 
       // yjs extension
-      yCollab(props.yCode, props.yAwareness, {undoManager:  new Y.UndoManager(props.yCode)}),
+      yCollabExtension,
 
       // lsp extension
       ls
