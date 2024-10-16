@@ -7,9 +7,11 @@ A real-time collaborative platform that combines a whiteboard, code editor and w
 ### ⏳ v2.0 (In progress)
 This release focuses on improving the editor capabilities by adding LSP support
 
-#### Features
--- TODO --
+#### ✅ Completed
+- Added undo/redo support to whiteboard
 
+#### ⌛ Pending
+- Add LSP support
 
 
 ### ✅ v1.0
