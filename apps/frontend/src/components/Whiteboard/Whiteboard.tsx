@@ -69,10 +69,9 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
       binding = new ExcalidrawBinding(
         props.yElements,
         props.yAssets,
-        containerRef(),
         excalidrawAPI(),
         props.yAwareness,
-        undoManager,
+        {excalidrawDom: containerRef(), undoManager: undoManager},
       );
     } 
   })
