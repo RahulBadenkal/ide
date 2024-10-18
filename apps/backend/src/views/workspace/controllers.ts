@@ -21,7 +21,7 @@ const getUserRole = (userId: string, document: {owner: string, sharing: boolean}
 type Room = {
   yDoc: Y.Doc,  yAwareness: Y.Doc, newYAwareness: awarenessProtocol.Awareness,
   prevDoc: Doc, doc: Doc, prevAwareness: Awareness, awareness: Awareness, 
-  userIdSocketMap: {[userId: string]: WebSocket}, 
+  sessionIdSocketMap: {[sessionId: string]: WebSocket}, 
   updateDocNameState: ApiState, 
   updateShareInfoState: ApiState,
   codeExecutionSocket?: WebSocket,
@@ -101,7 +101,7 @@ const newRoom = (document): Room => {
   return {
     yDoc, yAwareness, newYAwareness,
     prevDoc:  doc, doc, prevAwareness: awareness, awareness,
-    userIdSocketMap: {},
+    sessionIdSocketMap: {},
     updateDocNameState: ApiState.NOT_LOADED,
     updateShareInfoState: ApiState.NOT_LOADED,
     addedOn: now,
@@ -179,6 +179,17 @@ const getDocumentByDocIdOrRoomId = async (documentId?: string, roomId?: string) 
   return document
 }
 
+const getUserDoc = async (userId: string) => {
+  const pool = await DB.getPool();
+  const query = sql.unsafe`
+    SELECT * FROM document
+    WHERE owner = ${userId}
+    LIMIT 1;
+  `;
+  const document = await pool.maybeOne(query)
+  return document
+}
+
 const getUserLastOpenedDocWithAccess = async (userId: string) => {
   const pool = await DB.getPool();
   const query = sql.unsafe`
@@ -232,11 +243,11 @@ const updateLastOpenedOn = async (userId: string, documentId: string, roomId: st
 }
 
 const sendMessageToOthers = (room: Room, message: string, author: string) => {
-  const {yAwareness, userIdSocketMap} = room
+  const {yAwareness, sessionIdSocketMap} = room
   const collaborators = yAwarenessToJson(yAwareness).collaborators
   for (let collaboratorId of Object.keys(collaborators)) {
     if (author !== collaboratorId) {
-      const clientWs = userIdSocketMap[collaboratorId]
+      const clientWs = sessionIdSocketMap[collaboratorId]
       clientWs.send(message)
     }
   }
@@ -250,7 +261,7 @@ const addNewRoom = (document) => {
 
   yDoc.on("update", (update, _, __, tr) => {
     const {author = null, type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
-    console.log('onDocUpdate', tr.local, author, type)  // , tr.origin, docToJson(doc))
+    // console.log('onDocUpdate', tr.local, author, type)  // , tr.origin, docToJson(doc))
 
     const base64Update = fromUint8ArrayToBase64(update)
     const message = {type, data, docDelta: base64Update}
@@ -265,7 +276,7 @@ const addNewRoom = (document) => {
   })
 
   yAwareness.on("update", (update, _, __, tr) => {
-    console.log('onAwarenessUpdate', tr.local, tr.origin)
+    // console.log('onAwarenessUpdate', tr.local, tr.origin)
     const {author = null, type = null, ...data} = !isNullOrUndefined(tr.origin) && typeof tr.origin === "object" ? tr.origin : {}
 
     const base64Update = fromUint8ArrayToBase64(update)
@@ -275,12 +286,11 @@ const addNewRoom = (document) => {
 
     room.prevAwareness = room.awareness
     room.awareness = yAwareness.getMap().toJSON() as any
-    console.log('awareness update', room.awareness)
     room.updatedAt = new Date().toISOString()
   })
 
   newYAwareness.on('change', ({ added, updated, removed }, origin, t) => {
-    console.log('onNewYjsAwarenessUpdate', {added, updated, removed}, origin)
+    // console.log('onNewYjsAwarenessUpdate', {added, updated, removed}, origin)
     const {author = null, type = null, ...data} = !isNullOrUndefined(origin) && typeof origin === "object" ? origin : {}
 
     const changedClients: number[] = added.concat(updated)
@@ -348,7 +358,8 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
     }
   }
   else {
-    let document = await getUserLastOpenedDocWithAccess(user.id)
+    // Create a personal doc for user
+    let document = await getUserDoc(user.id)
     if (!document) {
       document = await addNewDocToDb(user.id)
     }
@@ -361,10 +372,11 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
   }
 
   // Session specific variables
+  const sessionId = crypto.randomUUID();
   const room = rooms[documentId]
-  const {yDoc, yAwareness, newYAwareness, userIdSocketMap} = room;
+  const {yDoc, yAwareness, newYAwareness, sessionIdSocketMap} = room;
   const role = getUserRole(user.id, yDocToJson(room.yDoc));
-  ws.send(JSON.stringify({type: 'init', data: {user, role, 
+  ws.send(JSON.stringify({type: 'init', data: {user: {sessionId, ...user}, role,
     yDoc: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yDoc)), 
     yAwareness: fromUint8ArrayToBase64(Y.encodeStateAsUpdate(yAwareness)),
     newYAwareness: fromUint8ArrayToBase64(awarenessProtocol.encodeAwarenessUpdate(
@@ -374,13 +386,14 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
     ))
   }}))
 
-  userIdSocketMap[user.id] = ws
+  sessionIdSocketMap[sessionId] = ws
 
   const collaborator = new Y.Map()
+  collaborator.set("sessionId", sessionId)
   collaborator.set("id", user.id)
   collaborator.set("name", user.name);
   collaborator.set("joinedOn", new Date().toISOString());
-  (yAwareness.getMap().get("collaborators") as any).set(user.id, collaborator)
+  (yAwareness.getMap().get("collaborators") as any).set(sessionId, collaborator)
 
   // Add the new collaborator info to yjs awareness also
 
@@ -388,7 +401,7 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
     if (updateUserNameState === ApiState.LOADING) {
       return
     }
-    let name = (yAwareness.getMap().get("collaborators") as any).get(user.id).get("name")
+    let name = (yAwareness.getMap().get("collaborators") as any).get(sessionId).get("name")
     updateUserNameState = ApiState.LOADING
     const query = sql.unsafe`
       UPDATE app_user 
@@ -398,14 +411,15 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
     try {
       await pool.query(query)
       updateUserNameState = ApiState.LOADED
+      console.log("username updated")
     }
     catch (error) {
       updateUserNameState = ApiState.ERROR
-      console.error(`Failed to update user name for user: ${user.id}`)
+      console.error(`Failed to update user name for session: ${sessionId} / user: ${user.id}`)
       console.error(error)
     }
 
-    const x = (yAwareness.getMap().get("collaborators") as any).get(user.id)
+    const x = (yAwareness.getMap().get("collaborators") as any).get(sessionId)
     if (x && x.get("name") !== name) {
       _updateUserName()
     }
@@ -538,13 +552,13 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
     const {type, data, docDelta, awarenessDelta, newAwarenessDelta} = message
 
     if (docDelta) {
-      Y.applyUpdate(yDoc, fromBase64ToUint8Array(docDelta), {author: user.id, type, data})
+      Y.applyUpdate(yDoc, fromBase64ToUint8Array(docDelta), {author: sessionId, type, data})
     }
     if (awarenessDelta) {
-      Y.applyUpdate(yAwareness, fromBase64ToUint8Array(awarenessDelta), {author: user.id, type, data})
+      Y.applyUpdate(yAwareness, fromBase64ToUint8Array(awarenessDelta), {author: sessionId, type, data})
     }
     if (newAwarenessDelta) {
-      awarenessProtocol.applyAwarenessUpdate(newYAwareness, fromBase64ToUint8Array(newAwarenessDelta), {author: user.id, type, data})
+      awarenessProtocol.applyAwarenessUpdate(newYAwareness, fromBase64ToUint8Array(newAwarenessDelta), {author: sessionId, type, data})
     }
 
     switch (type) {
@@ -562,10 +576,11 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
           const owner = yDocToJson(yDoc).owner
           const error = new SocketError({status: 403, code: "forbidden", message: 'You have been kicked out', closeSocket: true})
           const message = {type: "error", data: error.payload}
-          for (let collaboratorId of Object.keys(collaborators)) {
-            if (collaboratorId !== owner) {
-              userIdSocketMap[collaboratorId]?.send(JSON.stringify(message))  
-              userIdSocketMap[collaboratorId]?.close(error.payload.wsStatus, error.payload.message)  
+          for (let sessionId of Object.keys(collaborators)) {
+            const userId = collaborators[sessionId].id
+            if (userId !== owner) {
+              sessionIdSocketMap[sessionId]?.send(JSON.stringify(message))  
+              sessionIdSocketMap[sessionId]?.close(error.payload.wsStatus, error.payload.message)  
             }
           }  
         }
@@ -609,14 +624,15 @@ export const room = async (ws: WebSocket, req: Request<{}, {}, {}, {documentId?:
   });
 
   ws.on("close", () => {
+    console.log("Client disconnected")
     if (yAwareness) {
-      (yAwareness.getMap().get("collaborators") as any).delete(user.id)
-      delete userIdSocketMap[user.id]
+      (yAwareness.getMap().get("collaborators") as any).delete(sessionId)
+      delete sessionIdSocketMap[sessionId]
     }
     if (newYAwareness) {
-      const yjsClientId = Array.from(newYAwareness.getStates().keys()).find((x) => newYAwareness.getStates().get(x).user?.id === user.id)
+      const yjsClientId = Array.from(newYAwareness.getStates().keys()).find((x) => newYAwareness.getStates().get(x).user?.sessionId === sessionId)
       if (yjsClientId) {
-        awarenessProtocol.removeAwarenessStates(newYAwareness, [+yjsClientId] , {author: user.id})
+        awarenessProtocol.removeAwarenessStates(newYAwareness, [+yjsClientId] , {author: sessionId})
       }
     }
   })
@@ -653,7 +669,7 @@ setInterval(async () => {
   let [total, fail] = [0, 0]
   const pool = await DB.getPool()
   for (let documentId of Object.keys(rooms)) {
-    const {yDoc, doc, docUpdatedAt, docSyncedId, userIdSocketMap } = rooms[documentId]
+    const {yDoc, doc, docUpdatedAt, docSyncedId, sessionIdSocketMap } = rooms[documentId]
     if (docUpdatedAt === docSyncedId) {
       continue
     }
@@ -694,12 +710,12 @@ setInterval(async () => {
 
   let total = 0;
   for (let documentId of Object.keys(rooms)) {
-    const {addedOn, updatedAt, docUpdatedAt, docSyncedId, userIdSocketMap } = rooms[documentId]
+    const {addedOn, updatedAt, docUpdatedAt, docSyncedId, sessionIdSocketMap } = rooms[documentId]
     if (docUpdatedAt !== docSyncedId) {
       // still needs to be synced
       continue
     }
-    const collaboratorIds = Object.keys(userIdSocketMap)
+    const collaboratorIds = Object.keys(sessionIdSocketMap)
     const maxTime = collaboratorIds.length > 0 ? ROOM_IDLE_TIME_WITH_PEOPLE : ROOM_IDLE_TIME_WITHOUT_PEOPLE
     const diff = new Date().getTime() - new Date(updatedAt).getTime()
     if (diff < maxTime) {
@@ -712,8 +728,8 @@ setInterval(async () => {
     const error = new SocketError({status: 400, code: "idle", message: 'Room has been closed due to inactivity', closeSocket: true})
     const message = {type: "error", data: error.payload}
     for (let collaboratorId of collaboratorIds) {
-      userIdSocketMap[collaboratorId].send(JSON.stringify(message)) 
-      userIdSocketMap[collaboratorId].close(error.payload.wsStatus, error.payload.message)  
+      sessionIdSocketMap[collaboratorId].send(JSON.stringify(message)) 
+      sessionIdSocketMap[collaboratorId].close(error.payload.wsStatus, error.payload.message)  
     }  
 
     // Delete room from memory

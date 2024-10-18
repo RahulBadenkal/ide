@@ -14,6 +14,7 @@ export enum Language {
 }
 
 export type Collaborator = {
+  sessionId: string;
   id: string, 
   name?: string;
   joinedOn: string;
@@ -51,5 +52,5 @@ export type Awareness = {
   console?: Console
 
   // collaborators
-  collaborators: {[id: string]: Collaborator}
+  collaborators: {[sessionId: string]: Collaborator}
 }

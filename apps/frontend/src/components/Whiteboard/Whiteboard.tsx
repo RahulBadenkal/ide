@@ -64,8 +64,7 @@ export const Whiteboard: Component<WhiteboardProps> = (props) => {
       
       // Edits from peers(server) comes with origin as null and by default undoManager tracks null origin, 
       // so removing that so that it doesn't consider that in the user's local undo-redo cache
-      undoManager = new Y.UndoManager(props.yElements, {trackedOrigins: new Set()})   
- 
+      undoManager = new Y.UndoManager(props.yElements, {trackedOrigins: new Set()})
       binding = new ExcalidrawBinding(
         props.yElements,
         props.yAssets,

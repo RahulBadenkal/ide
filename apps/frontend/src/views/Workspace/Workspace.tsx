@@ -224,6 +224,7 @@ export const Workspace = () => {
         Y.applyUpdate(yAwareness(), fromBase64ToUint8Array(data.yAwareness))
         awarenessProtocol.applyAwarenessUpdate(newYAwareness(), fromBase64ToUint8Array(data.newYAwareness), null)
         newYAwareness().setLocalStateField('user', {
+          sessionId: user().sessionId,
           id: user().id,
           name: user().name,
 
@@ -833,7 +834,7 @@ export const Workspace = () => {
                 <TextFieldRoot class="w-full">
                   <TextFieldLabel>My name</TextFieldLabel>
                   <div class="relative">
-                    <TextField type="text" placeholder="Amazing you" value={user().name} onInput={(e) => onUserNameChange((e.target as any).value)} />
+                    <TextField type="text" placeholder="Amazing you" value={awareness().collaborators[user().sessionId].name} onInput={(e) => onUserNameChange((e.target as any).value)} />
                     {/* <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                       <Loader2Icon class="h-4 w-4 animate-spin text-gray-400" />
                     </div> */}
@@ -983,7 +984,7 @@ export const Workspace = () => {
           <div>
             <TextFieldRoot class="w-full">
               <TextFieldLabel>My name</TextFieldLabel>
-              <TextField type="text" placeholder="Amazing you" value={user().name} onInput={(e) => onUserNameChange((e.target as any).value)} />
+              <TextField type="text" placeholder="Amazing you" value={awareness().collaborators[user().sessionId].name} onInput={(e) => onUserNameChange((e.target as any).value)} />
             </TextFieldRoot>
           </div>
         </DropdownMenuContent>
@@ -1513,7 +1514,13 @@ export const Workspace = () => {
   const onUserNameChange = (name: string) => {
     setUser({ ...user(), name: name });
     yAwareness().transact(() => {
-      (yAwareness().getMap().get("collaborators") as Y.Map<any>).get(user().id).set("name", name)
+      const collaborators = yAwareness().getMap().get('collaborators') as Y.Map<any>
+      for (let key of collaborators.keys()) {
+        const collaborator = collaborators.get(key)
+        if (collaborator.get("id") === user().id) {
+          collaborator.set("name", name)
+        } 
+      }
     }, { type: 'updateUserName' })
     newYAwareness().setLocalStateField('user', {
       ...newYAwareness().getLocalState().user,
